@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 # Input parameters
 l = 1.0  # Length of the domain
@@ -52,4 +53,9 @@ plt.xlabel("Position (m)")
 plt.ylabel("Temperature (°C)")
 plt.title("Temperature Distribution at Different Time Steps")
 plt.grid()
+
+
+script_dir = os.path.dirname(__file__)
+plot_path = os.path.join(script_dir, "temperature_distribution_at_dt_{}.png".format(dt))
+plt.savefig(plot_path)
 plt.show()
