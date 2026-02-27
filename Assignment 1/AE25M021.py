@@ -7,7 +7,7 @@ l = 1.0  # Length of the domain
 alpha = 1.0  # Diffusivity
 nodes = 11  # Number of grid points
 dx = l / (nodes - 1)  # Grid spacing
-dt = 0.001  # Time step
+dt = 0.001  # Time step size
 gamma = alpha * dt / dx**2  # Stability parameter
 total_time = 10.0  # Total simulation time
 
@@ -50,7 +50,7 @@ for t in time_plot:
     )
 plt.legend()
 plt.xlabel("Position (m)")
-plt.ylabel("Temperature (°C)")
+plt.ylabel("Temperature")
 plt.title("Temperature Distribution at Different Time Steps")
 plt.grid()
 
