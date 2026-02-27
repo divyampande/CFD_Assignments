@@ -7,7 +7,7 @@ l = 1.0  # Length of the domain
 alpha = 1.0  # Diffusivity
 nodes = 11  # Number of grid points
 dx = l / (nodes - 1)  # Grid spacing
-dt = 0.01  # Time step size
+dt = 0.1  # Time step size
 gamma = alpha * dt / dx**2  # Stability parameter
 total_time = 10.0  # Total simulation time
 
@@ -20,8 +20,11 @@ if gamma > 0.5:
 num_steps = int(total_time / dt)  # Number of time steps
 
 time_plot = np.array(
-    [0, 0.002, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 10.0]
+    [0, 0.002, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 5.0, 10.0]
 )  # Array to store the time steps which will be plotted
+
+# Spatial coordinates
+x = np.linspace(0, l, nodes)
 
 
 # Initial and boundary conditions
@@ -38,7 +41,6 @@ T_history[:, -1] = T[-1].copy()  # Store right boundary condition
 # Time-stepping loop
 for n in range(1, num_steps + 1):
     T_old = T.copy()
-    # Vectorized update for inner nodes
     T[1:-1] = T_old[1:-1] + gamma * (T_old[2:] - 2 * T_old[1:-1] + T_old[:-2])
     T_history[n] = T.copy()
 
@@ -46,20 +48,45 @@ for n in range(1, num_steps + 1):
 # The left boundary is still 0 at t=0.
 T_history[0, 0] = 0.0
 
-# Final plot of temperature distribution at different time steps
-plt.figure(figsize=(10, 6))
-for t in time_plot:
-    plt.plot(
-        np.linspace(0, l, nodes), T_history[int(t / dt)], label=f"Time = {t:.3f} s"
+
+def plot_temperature_distribution(
+    x_coords, T_history, time_points, dt, gamma, output_filename
+):
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    # Use a colormap for visually distinct line colors
+    colors = plt.cm.viridis(np.linspace(0, 1, len(time_points)))
+
+    for i, t in enumerate(time_points):
+        # find the closest time step index to avoid floating point issues
+        step_index = int(round(t / dt))
+
+        if step_index < T_history.shape[0]:
+            ax.plot(
+                x_coords,
+                T_history[step_index],
+                marker="o",
+                markersize=4,
+                linestyle="-",
+                color=colors[i],
+                label=f"t = {t:.3f} s",
+            )
+
+    ax.set_xlabel("Position (m)", fontsize=12)
+    ax.set_ylabel("Temperature", fontsize=12)
+    ax.set_title(
+        f"1D Heat Conduction (FTCS) | $\Delta t$ = {dt} s | $\gamma$ = {gamma:.3f}",
+        fontsize=14,
+        fontweight="bold",
     )
-plt.legend()
-plt.xlabel("Position (m)")
-plt.ylabel("Temperature")
-plt.title("Temperature Distribution at Different Times for time step of {}".format(dt))
-plt.grid()
+    ax.legend(title="Time", fontsize=10)
+    plt.savefig(output_filename, dpi=300, bbox_inches="tight")
+    print(f"Plot saved successfully as: {output_filename}")
+    plt.show()
 
 
+figname = f"temperature_distribution_at_dt_{dt}.png"
 script_dir = os.path.dirname(__file__)
-plot_path = os.path.join(script_dir, "temperature_distribution_at_dt_{}.png".format(dt))
-plt.savefig(plot_path)
-plt.show()
+plot_path = os.path.join(script_dir, figname)
+plot_temperature_distribution(x, T_history, time_plot, dt, gamma, plot_path)
