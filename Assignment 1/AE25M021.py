@@ -7,7 +7,7 @@ l = 1.0  # Length of the domain
 alpha = 1.0  # Diffusivity
 nodes = 11  # Number of grid points
 dx = l / (nodes - 1)  # Grid spacing
-dt = 0.001  # Time step size
+dt = 0.01  # Time step size
 gamma = alpha * dt / dx**2  # Stability parameter
 total_time = 10.0  # Total simulation time
 
@@ -20,7 +20,7 @@ if gamma > 0.5:
 num_steps = int(total_time / dt)  # Number of time steps
 
 time_plot = np.array(
-    [0, 0.1, 0.5, 1, 2, 5, 10]
+    [0, 0.002, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 10.0]
 )  # Array to store the time steps which will be plotted
 
 
@@ -42,6 +42,10 @@ for n in range(1, num_steps + 1):
     T[1:-1] = T_old[1:-1] + gamma * (T_old[2:] - 2 * T_old[1:-1] + T_old[:-2])
     T_history[n] = T.copy()
 
+# Since the left boundary condition is applied for t>0 but not t=0, we need to update the first row of T_history.
+# The left boundary is still 0 at t=0.
+T_history[0, 0] = 0.0
+
 # Final plot of temperature distribution at different time steps
 plt.figure(figsize=(10, 6))
 for t in time_plot:
@@ -51,7 +55,7 @@ for t in time_plot:
 plt.legend()
 plt.xlabel("Position (m)")
 plt.ylabel("Temperature")
-plt.title("Temperature Distribution at Different Time Steps")
+plt.title("Temperature Distribution at Different Times for time step of {}".format(dt))
 plt.grid()
 
 
