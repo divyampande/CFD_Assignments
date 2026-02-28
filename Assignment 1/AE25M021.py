@@ -7,7 +7,7 @@ l = 1.0  # Length of the domain
 alpha = 1.0  # Diffusivity
 nodes = 11  # Number of grid points
 dx = l / (nodes - 1)  # Grid spacing
-dt = 0.1  # Time step size
+dt = 0.001  # Time step size
 gamma = alpha * dt / dx**2  # Stability parameter
 total_time = 10.0  # Total simulation time
 
@@ -19,34 +19,32 @@ if gamma > 0.5:
     print("Consider reducing 'dt' or increasing 'dx' to ensure numerical stability.")
 num_steps = int(total_time / dt)  # Number of time steps
 
-time_plot = np.array(
-    [0, 0.002, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 5.0, 10.0]
-)  # Array to store the time steps which will be plotted
+# Array to store the time steps which will be plotted
+time_plot = [0, 0.002, 0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 2.0, 5.0, 10.0]
+plot_steps = [int(round(t / dt)) for t in time_plot]
 
 # Spatial coordinates
 x = np.linspace(0, l, nodes)
 
 
 # Initial and boundary conditions
-T = np.zeros(nodes)  # Initial temperature distribution
-T[0] = 1.0  # Boundary condition at the left end
-T[-1] = 0.0  # Boundary condition at the right end
+T = np.zeros(nodes)  # Initial condition at t=0
 
-# Array to store temperature distribution
-T_history = np.zeros((num_steps + 1, nodes))
-T_history[0] = T.copy()  # Store initial condition
-T_history[:, 0] = T[0].copy()  # Store left boundary condition
-T_history[:, -1] = T[-1].copy()  # Store right boundary condition
+# Dictionary to store only the required time steps (Memory Efficient)
+T_history = {0.0: T.copy()}
+
+# Apply boundary conditions for t > 0
+T[0] = 1.0
+T[-1] = 0.0
+
 
 # Time-stepping loop
 for n in range(1, num_steps + 1):
     T_old = T.copy()
     T[1:-1] = T_old[1:-1] + gamma * (T_old[2:] - 2 * T_old[1:-1] + T_old[:-2])
-    T_history[n] = T.copy()
-
-# Since the left boundary condition is applied for t>0 but not t=0, we need to update the first row of T_history.
-# The left boundary is still 0 at t=0.
-T_history[0, 0] = 0.0
+    if n in plot_steps:
+        current_time = n * dt
+        T_history[current_time] = T.copy()
 
 
 def plot_temperature_distribution(
@@ -58,20 +56,16 @@ def plot_temperature_distribution(
     # Use a colormap for visually distinct line colors
     colors = plt.cm.viridis(np.linspace(0, 1, len(time_points)))
 
-    for i, t in enumerate(time_points):
-        # find the closest time step index to avoid floating point issues
-        step_index = int(round(t / dt))
-
-        if step_index < T_history.shape[0]:
-            ax.plot(
-                x_coords,
-                T_history[step_index],
-                marker="o",
-                markersize=4,
-                linestyle="-",
-                color=colors[i],
-                label=f"t = {t:.3f} s",
-            )
+    for i, (t, T_vals) in enumerate(T_history.items()):
+        ax.plot(
+            x_coords,
+            T_vals,
+            marker="o",
+            markersize=4,
+            linestyle="-",
+            color=colors[i],
+            label=f"t = {t:.3f} s",
+        )
 
     ax.set_xlabel("Position (m)", fontsize=12)
     ax.set_ylabel("Temperature", fontsize=12)
