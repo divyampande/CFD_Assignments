@@ -70,7 +70,7 @@ def plot_temperature_distribution(
     ax.set_xlabel("Position (m)", fontsize=12)
     ax.set_ylabel("Temperature", fontsize=12)
     ax.set_title(
-        f"1D Heat Conduction (FTCS) | $\Delta t$ = {dt} s | $\gamma$ = {gamma:.3f}",
+        f"1D Heat Conduction (FTCS) | $\\Delta t$ = {dt} s | $\\gamma$ = {gamma:.3f}",
         fontsize=14,
         fontweight="bold",
     )
