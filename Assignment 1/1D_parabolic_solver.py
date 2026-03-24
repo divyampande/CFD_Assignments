@@ -1,3 +1,5 @@
+# This script solves the 1D parabolic PDE (heat equation) using the Forward Time Centered Space (FTCS) method.
+
 import numpy as np
 import matplotlib.pyplot as plt
 import os
