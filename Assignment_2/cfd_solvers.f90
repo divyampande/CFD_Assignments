@@ -26,11 +26,15 @@ contains
     real(wp) function get_error(T_new, T_old, imax, jmax)
         real(wp), intent(in) :: T_new(:,:), T_old(:,:)
         integer, intent(in)  :: imax, jmax
+        integer :: i, j
         
-        ! TODO: Implement double loop from i=2 to imax-1, j=2 to jmax-1
-        ! Sum the absolute difference between T_new and T_old
+        get_error = 0.0_wp 
         
-        get_error = 0.0_wp ! Placeholder
+        do j = 2, jmax - 1
+            do i = 2, imax - 1
+                get_error = get_error + abs(T_new(i,j) - T_old(i,j))
+            end do
+        end do
     end function get_error
 
     ! Thomas Algorithm (TDMA) for solving tridiagonal systems
