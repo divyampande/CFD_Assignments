@@ -38,13 +38,40 @@ contains
     end function get_error
 
     ! Thomas Algorithm (TDMA) for solving tridiagonal systems
+    ! Equation form: a(i)*x(i-1) + b(i)*x(i) + c(i)*x(i+1) = d(i)
     subroutine tdma(a, b, c, d, x, n)
         integer, intent(in)  :: n
         real(wp), intent(in) :: a(n), b(n), c(n), d(n)
         real(wp), intent(out):: x(n)
         
-        x = 0.0_wp ! Placeholder
-        ! TODO: Implement Forward Elimination and Backward Substitution
+        ! Arrays for the modified coefficients
+        real(wp) :: cp(n), dp(n)
+        real(wp) :: denom
+        integer  :: i
+        
+        ! Modify the first row coefficients
+        cp(1) = c(1) / b(1)
+        dp(1) = d(1) / b(1)
+        
+        ! Loop through the rest of the rows
+        do i = 2, n
+            denom = b(i) - a(i) * cp(i-1)
+
+            if (i < n) then
+                cp(i) = c(i) / denom
+            end if
+            
+            dp(i) = (d(i) - a(i) * dp(i-1)) / denom
+        end do
+        
+        ! The last variable is fully solved now
+        x(n) = dp(n)
+        
+        ! Substitute back up the line to solve the rest
+        do i = n - 1, 1, -1
+            x(i) = dp(i) - cp(i) * x(i+1)
+        end do
+        
     end subroutine tdma
 
 
@@ -58,12 +85,50 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
         
+        real(wp) :: T_old(imax, jmax)
+        real(wp) :: error, beta2, denom
+        integer  :: i, j
+        integer  :: tick_start, tick_end, tick_rate
+
+        ! Start the timer
+        call system_clock(tick_start, tick_rate)
+
+        beta2 = (dx / dy)**2
+        denom = 2.0_wp * (1.0_wp + beta2)
+
         iter_count = 0
-        comp_time  = 0.0_wp
-        ! TODO: Implement the point-by-point Gauss-Seidel sweep
+        error = 1.0_wp
+
+        do while (error > 0.01_wp)
+            iter_count = iter_count + 1
+            
+            ! Save the current state 
+            T_old = T
+
+            ! The Gauss-Seidel Sweep
+            do j = 2, jmax - 1
+                do i = 2, imax - 1
+                    T(i,j) = ( T(i+1,j) + T(i-1,j) + beta2 * (T(i,j+1) + T(i,j-1)) ) / denom
+                end do
+            end do
+
+            ! Check Convergence
+            error = get_error(T, T_old, imax, jmax)
+
+            ! Safety net against infinite loops
+            if (iter_count > 50000) then
+                print *, "WARNING: PGS did not converge!"
+                exit
+            end if
+        end do
+
+        ! Stop the timer
+        call system_clock(tick_end)
+        comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
+
     end subroutine solve_PGS
 
-    ! (c) Point Successive Over-Relaxation
+    ! (c) Point Successive Over-Relaxation (PSOR)
     subroutine solve_PSOR(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
         real(wp), intent(inout) :: T(:,:)
         integer, intent(in)     :: imax, jmax
@@ -71,9 +136,48 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
         
+        real(wp) :: T_old(imax, jmax)
+        real(wp) :: error, beta2, denom, T_GS
+        integer  :: i, j
+        integer  :: tick_start, tick_end, tick_rate
+
+        ! Start timer
+        call system_clock(tick_start, tick_rate)
+
+        beta2 = (dx / dy)**2
+        denom = 2.0_wp * (1.0_wp + beta2)
+
         iter_count = 0
-        comp_time  = 0.0_wp
-        ! TODO: Implement PGS with the relaxation factor (omega)
+        error = 1.0_wp 
+
+        do while (error > 0.01_wp)
+            iter_count = iter_count + 1
+            T_old = T
+
+            ! The PSOR Sweep
+            do j = 2, jmax - 1
+                do i = 2, imax - 1
+                    ! Standard Gauss-Seidel guess
+                    T_GS = ( T(i+1,j) + T(i-1,j) + beta2 * (T(i,j+1) + T(i,j-1)) ) / denom
+                    
+                    ! Relaxation factor
+                    T(i,j) = (1.0_wp - omega) * T_old(i,j) + omega * T_GS
+                end do
+            end do
+
+            ! Check Convergence
+            error = get_error(T, T_old, imax, jmax)
+
+            if (iter_count > 50000) then
+                print *, "WARNING: PSOR did not converge with omega = ", omega
+                exit
+            end if
+        end do
+
+        ! Stop timer
+        call system_clock(tick_end)
+        comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
+
     end subroutine solve_PSOR
 
 
