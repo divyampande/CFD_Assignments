@@ -14,6 +14,7 @@ program main
     integer, parameter :: imax = 31, jmax = 41
     real(wp), parameter :: L = 0.3_wp, W = 0.4_wp
     real(wp), parameter :: BC(4) = [40.0_wp, 10.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
+    real(wp), parameter :: BC_P2(4) = [40.0_wp, 40.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
     real(wp) :: dx, dy
     
     ! Data Arrays
@@ -31,11 +32,6 @@ program main
     dy = W / real(jmax - 1, wp)
 
     ! INITIALIZATION & BOUNDARY CONDITIONS (Problem 1)
-    
-    ! Initialize all interior points to 0.0 C
-    T = 0.0_wp 
-    
-    ! Apply Boundary Conditions
     call reset_grid(T, imax, jmax, BC)
     
     print *, "--- 2D Heat Conduction Solver Initialized ---"
@@ -122,6 +118,12 @@ program main
     call reset_grid(T, imax, jmax, BC)
     call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
     call export_to_csv("results/prob1_results.csv", T, imax, jmax, dx, dy)
+
+    ! Problem 2 Case a: Change top BC to 40.0 and solve again
+    ! We will just use the best LSOR from Problem 1 to generate the final field for Problem 2a as well.
+    call reset_grid(T, imax, jmax, BC_P2)
+    call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
+    call export_to_csv("results/prob2_caseA_results.csv", T, imax, jmax, dx, dy)
 
 ! INTERNAL SUBROUTINES
 contains

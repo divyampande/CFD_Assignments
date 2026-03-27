@@ -12,33 +12,43 @@ import matplotlib.pyplot as plt
 
 # Get the absolute directory path where this specific python file lives
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Lock the results directory to that exact location
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+
+# Add new problems here as needed, with their respective configurations
+CONFIGS = [
+    {
+        "prefix": "prob1",
+        "title": "Problem 1: Steady-State Temperature Distribution",
+        "L": 0.3,
+        "W": 0.4,
+    },
+    {
+        "prefix": "prob2_caseA",
+        "title": "Problem 2 (Case A): Symmetry Boundary Conditions",
+        "L": 0.3,
+        "W": 0.4,
+    },
+]
 
 
 def setup_environment():
-    """Checks for the results directory and required data files."""
+    """Ensures the results directory exists."""
     if not os.path.exists(RESULTS_DIR):
         print(f"[*] Creating '{RESULTS_DIR}' directory...")
         os.makedirs(RESULTS_DIR)
 
-    prob1_csv = os.path.join(RESULTS_DIR, "prob1_results.csv")
 
-    if not os.path.exists(prob1_csv):
-        print(f"\n[!] Data file '{prob1_csv}' not found.")
-        print("---------------------------------------------------------")
-        print(" ACTION REQUIRED:")
-        print(" 1. The 'results' directory is ready.")
-        print(" 2. Please run your compiled Fortran executable now.")
-        print(" 3. Run this Python script again to generate the plots.")
-        print("---------------------------------------------------------\n")
-        sys.exit(0)
-    return prob1_csv
+def generate_plots(config):
+    """Generates contour and line plots for a specific configuration."""
+    csv_file = os.path.join(RESULTS_DIR, f"{config['prefix']}_results.csv")
 
+    # If the Fortran code hasn't generated this specific file yet, skip it.
+    if not os.path.exists(csv_file):
+        return False
+    print(f"[*] Loading data for {config['prefix']}...")
+    df = pd.read_csv(csv_file)
 
-def plot_temperature_contour(df):
-    """Generates a 2D color contour map of the steady-state temperature."""
+    # Generate contour plot
     print("[*] Generating 2D Temperature Contour...")
 
     grid = df.pivot(index="Y", columns="X", values="T")
@@ -50,27 +60,27 @@ def plot_temperature_contour(df):
     contour = plt.contourf(X, Y, T, levels=100, cmap="inferno")
     plt.colorbar(contour, label="Temperature (°C)")
 
-    plt.title("Problem 1: Steady-State Temperature Distribution", fontsize=14)
+    plt.title(config["title"], fontsize=14)
     plt.xlabel("X Coordinate (m)", fontsize=12)
     plt.ylabel("Y Coordinate (m)", fontsize=12)
     plt.axis("equal")
 
-    save_path = os.path.join(RESULTS_DIR, "prob1_contour.png")
+    save_path = os.path.join(RESULTS_DIR, f"{config['prefix']}_contour.png")
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     print(f"    -> Saved to {save_path}")
+    plt.close()
 
-
-def plot_line_profiles(df):
-    """Plots temperature at 0.05m intervals along X and Y axes."""
+    # Generate line plots
     print("[*] Generating 0.05m Interval Line Plots...")
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
-    target_intervals = np.arange(0.0, 0.45, 0.05)
+    max_dim = max(config["L"], config["W"])
+    target_intervals = np.arange(0.0, max_dim + 0.05, 0.05)
 
     # Plot T vs Y at specific X intervals
     for x_val in target_intervals:
-        if x_val <= 0.3:  # L is max 0.3m
+        if x_val <= config["L"]:
             slice_data = df[np.isclose(df["X"], x_val, atol=1e-5)]
             if not slice_data.empty:
                 ax1.plot(slice_data["Y"], slice_data["T"], label=f"X = {x_val:.2f} m")
@@ -83,7 +93,7 @@ def plot_line_profiles(df):
 
     # Plot T vs X at specific Y intervals
     for y_val in target_intervals:
-        if y_val <= 0.4:  # W is max 0.4m
+        if y_val <= config["W"]:
             slice_data = df[np.isclose(df["Y"], y_val, atol=1e-5)]
             if not slice_data.empty:
                 ax2.plot(slice_data["X"], slice_data["T"], label=f"Y = {y_val:.2f} m")
@@ -94,9 +104,12 @@ def plot_line_profiles(df):
     ax2.grid(True, linestyle="--", alpha=0.7)
     ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4, fontsize=8)
 
-    save_path = os.path.join(RESULTS_DIR, "prob1_line_plots.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    print(f"    -> Saved to {save_path}")
+    line_path = os.path.join(RESULTS_DIR, f"{config['prefix']}_line_plots.png")
+    plt.savefig(line_path, dpi=300, bbox_inches="tight")
+    print(f"    -> Saved to {line_path}")
+    plt.close()
+
+    return True
 
 
 if __name__ == "__main__":
@@ -105,13 +118,23 @@ if __name__ == "__main__":
     print("=========================================================")
 
     # Check directories and get data path
-    data_file = setup_environment()
+    setup_environment()
 
-    print(f"[*] Loading data from {data_file}...")
-    df = pd.read_csv(data_file)
+    # Keep track of how many files we successfully processed to determine if we need to show an error message at the end
+    files_processed = 0
 
-    plot_temperature_contour(df)
-    plot_line_profiles(df)
+    for config in CONFIGS:
+        if generate_plots(config):
+            files_processed += 1
+
+    if files_processed == 0:
+        print("\n[!] No data files found in the results directory.")
+        print("---------------------------------------------------------")
+        print(" ACTION REQUIRED:")
+        print(" 1. Run your compiled Fortran executable.")
+        print(" 2. Run this Python script again to generate the plots.")
+        print("---------------------------------------------------------\n")
+        sys.exit(0)
 
     print("=========================================================")
     print("[SUCCESS] All post-processing complete.")
