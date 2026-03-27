@@ -1,2 +1,5 @@
 # Output Data
 Assignment_2/results/
+*.o
+*.mod
+*.exe
