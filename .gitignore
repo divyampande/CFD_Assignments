@@ -1,5 +1,5 @@
 # Output Data
-Assignment_2/results/
+*.csv
 *.o
 *.mod
 *.exe

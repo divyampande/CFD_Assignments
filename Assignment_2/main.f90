@@ -13,6 +13,7 @@ program main
     ! Grid Parameters (Problem 1)
     integer, parameter :: imax = 31, jmax = 41
     real(wp), parameter :: L = 0.3_wp, W = 0.4_wp
+    real(wp), parameter :: BC(4) = [40.0_wp, 10.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
     real(wp) :: dx, dy
     
     ! Data Arrays
@@ -35,10 +36,7 @@ program main
     T = 0.0_wp 
     
     ! Apply Boundary Conditions
-    T(:, 1)    = 40.0_wp    ! Bottom wall (T1)
-    T(1, :)    = 0.0_wp     ! Left wall (T2)
-    T(:, jmax) = 10.0_wp    ! Top wall (T3)
-    T(imax, :) = 0.0_wp     ! Right wall (T4)
+    call reset_grid(T, imax, jmax, BC)
     
     print *, "--- 2D Heat Conduction Solver Initialized ---"
     print *, "Grid: ", imax, "x", jmax
@@ -50,17 +48,17 @@ program main
     write(csv_id, '(A10, A20, A20, A15)') "Method", "Iterations", "Comp. Time (s)", "Omega"
 
     ! PGS
-    call reset_grid(T, imax, jmax)
+    call reset_grid(T, imax, jmax, BC)
     call solve_PGS(T, imax, jmax, dx, dy, iters, c_time)
     write(csv_id, '(A10, I20, F20.6, A15)') "PGS", iters, c_time, "N/A"
 
     ! LGS
-    call reset_grid(T, imax, jmax)
+    call reset_grid(T, imax, jmax, BC)
     call solve_LGS(T, imax, jmax, dx, dy, iters, c_time)
     write(csv_id, '(A10, I20, F20.6, A15)') "LGS", iters, c_time, "N/A"
 
     ! ADI
-    call reset_grid(T, imax, jmax)
+    call reset_grid(T, imax, jmax, BC)
     call solve_ADI(T, imax, jmax, dx, dy, iters, c_time)
     write(csv_id, '(A10, I20, F20.6, A15)') "ADI", iters, c_time, "N/A"
 
@@ -76,7 +74,7 @@ program main
     ! between 1.8 and 1.85 to save time. If I had to do the entire range, I would just change the limits of this loop.
     do w_int = 1800, 1850
         omega = real(w_int, wp) / 1000.0_wp
-        call reset_grid(T, imax, jmax)
+        call reset_grid(T, imax, jmax, BC)
         call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
         
         ! Print every test to the table
@@ -102,7 +100,7 @@ program main
     ! between 1.75 and 1.8 to save time. If I had to do the entire range, I would just change the limits of this loop.
     do w_int = 1750, 1800
         omega = real(w_int, wp) / 1000.0_wp
-        call reset_grid(T, imax, jmax)
+        call reset_grid(T, imax, jmax, BC)
         call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
         
         write(*, '(A10, I20, F20.6, F15.3)') "LSOR", iters, c_time, omega
@@ -121,7 +119,7 @@ program main
     ! DATA EXPORT
     ! We will use LSOR to generate the final steady-state field since all 
     ! methods converge to the exact same physical answer.
-    call reset_grid(T, imax, jmax)
+    call reset_grid(T, imax, jmax, BC)
     call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
     call export_to_csv("results/prob1_results.csv", T, imax, jmax, dx, dy)
 
@@ -129,15 +127,23 @@ program main
 contains
 
     ! Instantly resets the grid to 0.0 and re-applies Problem 1 Boundaries
-    subroutine reset_grid(T_array, max_i, max_j)
+    subroutine reset_grid(T_array, max_i, max_j, BC_list)
         real(wp), intent(inout) :: T_array(:,:)
         integer, intent(in) :: max_i, max_j
+        real(wp), intent(in) :: BC_list(4)
         
         T_array = 0.0_wp 
-        T_array(:, 1)     = 40.0_wp    ! Bottom
-        T_array(1, :)     = 0.0_wp     ! Left
-        T_array(:, max_j) = 10.0_wp    ! Top
-        T_array(max_i, :) = 0.0_wp     ! Right
+        ! Apply BCs
+        T_array(:, 1)     = BC_list(1)  ! Bottom
+        T_array(:, max_j) = BC_list(2)  ! Top
+        T_array(1, :)     = BC_list(3)  ! Left
+        T_array(max_i, :) = BC_list(4)  ! Right
+
+        ! ! Corners (Average of adjacent walls)
+        ! T_array(1, 1)         = (BC_list(1) +  BC_list(3)) / 2.0_wp  ! Bottom-Left
+        ! T_array(max_i, 1)     = (BC_list(1) +  BC_list(4)) / 2.0_wp  ! Bottom-Right
+        ! T_array(1, max_j)     = (BC_list(2) +  BC_list(3)) / 2.0_wp  ! Top-Left
+        ! T_array(max_i, max_j) = (BC_list(2) +  BC_list(4)) / 2.0_wp  ! Top-Right
     end subroutine reset_grid
 
     ! Writes the 2D grid into a 1D X, Y, T format for Python

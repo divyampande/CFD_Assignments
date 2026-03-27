@@ -47,7 +47,7 @@ def plot_temperature_contour(df):
     T = grid.values
 
     plt.figure(figsize=(8, 10))
-    contour = plt.contourf(X, Y, T, levels=50, cmap="inferno")
+    contour = plt.contourf(X, Y, T, levels=100, cmap="inferno")
     plt.colorbar(contour, label="Temperature (°C)")
 
     plt.title("Problem 1: Steady-State Temperature Distribution", fontsize=14)
