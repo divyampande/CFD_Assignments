@@ -123,6 +123,9 @@ program main
     ! We will just use the best LSOR from Problem 1 to generate the final field for Problem 2a as well.
     call reset_grid(T, imax, jmax, BC_P2)
     call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
+    open(newunit=csv_id, file='results/performance.csv', status='old', position='append', action='write')
+    write(csv_id, '(A10, I20, F20.6, F15.3)') "LSOR_P2a", iters, c_time, best_omega_lsor
+    close(csv_id)
     call export_to_csv("results/prob2_caseA_results.csv", T, imax, jmax, dx, dy)
 
 ! INTERNAL SUBROUTINES
