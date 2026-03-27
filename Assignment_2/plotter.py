@@ -28,6 +28,13 @@ CONFIGS = [
         "L": 0.3,
         "W": 0.4,
     },
+    {
+        "prefix": "prob2_caseB",
+        "title": "Problem 2 (Case B): Quarter Domain Symmetry",
+        "L": 0.3,
+        "W": 0.4,
+        "mirror_quarter": True,
+    },
 ]
 
 
@@ -47,6 +54,31 @@ def generate_plots(config):
         return False
     print(f"[*] Loading data for {config['prefix']}...")
     df = pd.read_csv(csv_file)
+
+    # QUARTER DOMAIN MIRRORING
+    if config.get("mirror_quarter"):
+        print("    -> Expanding quarter domain to full domain via symmetry...")
+
+        grid = df.pivot(index="Y", columns="X", values="T")
+        T_q = grid.values
+
+        # Mirror Horizontally
+        T_right = np.fliplr(T_q[:, :-1])
+        T_bottom_half = np.concatenate((T_q, T_right), axis=1)
+
+        # Mirror Vertically
+        T_top_half = np.flipud(T_bottom_half[:-1, :])
+        T_full = np.concatenate((T_bottom_half, T_top_half), axis=0)
+
+        # Rebuild the X and Y coordinate arrays
+        X_full = np.linspace(0.0, config["L"], T_full.shape[1])
+        Y_full = np.linspace(0.0, config["W"], T_full.shape[0])
+        X_mesh, Y_mesh = np.meshgrid(X_full, Y_full)
+
+        # 5. Overwrite the original dataframe with our new massive dataset
+        df = pd.DataFrame(
+            {"X": X_mesh.flatten(), "Y": Y_mesh.flatten(), "T": T_full.flatten()}
+        )
 
     # Generate contour plot
     print("[*] Generating 2D Temperature Contour...")

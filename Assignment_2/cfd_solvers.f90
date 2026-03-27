@@ -394,4 +394,79 @@ contains
 
     end subroutine solve_ADI
 
+    ! (f) LSOR for Quarter Domain (Symmetry Boundaries)
+    subroutine solve_LSOR_sym(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
+        real(wp), intent(inout) :: T(:,:)
+        integer, intent(in)     :: imax, jmax
+        real(wp), intent(in)    :: dx, dy, omega
+        integer, intent(out)    :: iter_count
+        real(wp), intent(out)   :: comp_time
+
+        real(wp) :: T_old(imax, jmax), T_star(imax-1)
+        real(wp) :: error, beta2
+        integer  :: i, j, nx
+        integer  :: tick_start, tick_end, tick_rate
+
+        ! TDMA Arrays (Size is now imax - 1 because we solve for the right wall too!)
+        real(wp) :: a(imax-1), b(imax-1), c(imax-1), rhs(imax-1)
+
+        call system_clock(tick_start, tick_rate)
+
+        beta2 = (dx / dy)**2
+        nx = imax - 1 
+
+        a = 1.0_wp
+        b = -2.0_wp * (1.0_wp + beta2)
+        c = 1.0_wp
+
+        ! Apply Ghost Node modification for the Right Symmetry Wall (i = imax)
+        a(nx) = 2.0_wp
+        c(nx) = 0.0_wp
+
+        iter_count = 0
+        error = 1.0_wp
+
+        do while (error > 0.01_wp)
+            iter_count = iter_count + 1
+            T_old = T
+
+            ! Loop all the way to jmax (Top Symmetry Wall)
+            do j = 2, jmax
+                
+                ! Build RHS
+                do i = 2, imax
+                    ! If we are at the top symmetry line, use the Y-direction ghost node
+                    if (j == jmax) then
+                        rhs(i-1) = -beta2 * (2.0_wp * T(i, j-1))
+                    else
+                        rhs(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
+                    end if
+                end do
+
+                ! Apply Left Dirichlet Boundary (Fixed at 0 C)
+                rhs(1) = rhs(1) - T(1, j) 
+
+                call tdma(a, b, c, rhs, T_star, nx)
+
+                ! Apply Over-Relaxation
+                do i = 2, imax
+                    T(i, j) = omega * T_star(i-1) + (1.0_wp - omega) * T_old(i, j)
+                end do
+            end do
+
+            error = 0.0_wp
+            do j = 2, jmax
+                do i = 2, imax
+                    error = error + abs(T(i, j) - T_old(i, j))
+                end do
+            end do
+
+            if (iter_count > 50000) exit
+        end do
+
+        call system_clock(tick_end)
+        comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
+
+    end subroutine solve_LSOR_sym
+
 end module cfd_solvers

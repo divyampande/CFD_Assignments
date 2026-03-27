@@ -19,6 +19,10 @@ program main
     
     ! Data Arrays
     real(wp) :: T(imax, jmax)
+
+    ! Data Arrays for Quarter Domain
+    integer, parameter :: imax_q = 16, jmax_q = 21
+    real(wp) :: T_q(imax_q, jmax_q)
     
     ! Tracking variables
     integer :: iters, csv_id, w_int
@@ -127,6 +131,27 @@ program main
     write(csv_id, '(A10, I20, F20.6, F15.3)') "LSOR_P2a", iters, c_time, best_omega_lsor
     close(csv_id)
     call export_to_csv("results/prob2_caseA_results.csv", T, imax, jmax, dx, dy)
+
+    ! Problem 2 Case B (Quarter Domain Symmetry)
+    print *, "--- Running Problem 2 Case B (Quarter Domain) ---"
+    
+    T_q = 0.0_wp
+    
+    ! Apply Dirichlet Boundaries
+    T_q(:, 1) = 40.0_wp     ! Bottom Wall
+    T_q(1, :) = 0.0_wp      ! Left Wall
+    ! T_q(1, 1) = (40.0_wp + 0.0_wp) / 2.0_wp  ! Corner Averaging
+    
+    ! ! We will use the best_omega_lsor
+    call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, best_omega_lsor, iters, c_time)
+    
+    ! Print results and save to CSV
+    open(newunit=csv_id, file='results/performance.csv', status='old', position='append', action='write')
+    write(csv_id, '(A10, I20, F20.6, F15.3)') "LSOR_P2b", iters, c_time, best_omega_lsor
+    close(csv_id)
+    call export_to_csv("results/prob2_caseB_results.csv", T_q, imax_q, jmax_q, dx, dy)
+    
+
 
 ! INTERNAL SUBROUTINES
 contains
