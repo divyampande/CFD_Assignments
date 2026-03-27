@@ -317,9 +317,81 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
 
+        real(wp) :: T_old(imax, jmax)
+        real(wp) :: T_half(imax, jmax) ! Array for the half-step
+        real(wp) :: error, beta2, alpha2
+        integer  :: i, j, nx, ny
+        integer  :: tick_start, tick_end, tick_rate
+
+        ! Arrays for the X-Sweep
+        real(wp) :: ax(imax-2), bx(imax-2), cx(imax-2), rhs_x(imax-2), x_val(imax-2)
+        ! Arrays for the Y-Sweep
+        real(wp) :: ay(jmax-2), by(jmax-2), cy(jmax-2), rhs_y(jmax-2), y_val(jmax-2)
+
+        call system_clock(tick_start, tick_rate)
+
+        ! Geometric ratios
+        beta2 = (dx / dy)**2
+        alpha2 = (dy / dx)**2
+        nx = imax - 2 
+        ny = jmax - 2
+        ax = 1.0_wp;  bx = -2.0_wp * (1.0_wp + beta2);  cx = 1.0_wp
+        ay = 1.0_wp;  by = -2.0_wp * (1.0_wp + alpha2); cy = 1.0_wp
+
         iter_count = 0
-        comp_time  = 0.0_wp
-        ! TODO: Implement half-step x-sweep followed by half-step y-sweep
+        error = 1.0_wp
+        T_half = T
+
+        do while (error > 0.01_wp)
+            iter_count = iter_count + 1
+            T_old = T
+
+            ! HALF-STEP 1: Implicit X-Sweep
+            do j = 2, jmax - 1
+                do i = 2, imax - 1
+                    rhs_x(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
+                end do
+
+                ! Left and Right boundary conditions
+                rhs_x(1)  = rhs_x(1)  - T_half(1, j) 
+                rhs_x(nx) = rhs_x(nx) - T_half(imax, j)
+
+                call tdma(ax, bx, cx, rhs_x, x_val, nx)
+
+                do i = 2, imax - 1
+                    T_half(i, j) = x_val(i-1)
+                end do
+            end do
+
+            ! HALF-STEP 2: Implicit Y-Sweep
+            do i = 2, imax - 1
+                do j = 2, jmax - 1
+                    rhs_y(j-1) = -alpha2 * (T_half(i-1, j) + T_half(i+1, j))
+                end do
+
+                ! Bottom and Top boundary conditions
+                rhs_y(1)  = rhs_y(1)  - T(i, 1) 
+                rhs_y(ny) = rhs_y(ny) - T(i, jmax)
+
+                call tdma(ay, by, cy, rhs_y, y_val, ny)
+
+                do j = 2, jmax - 1
+                    T(i, j) = y_val(j-1)
+                end do
+            end do
+
+            ! Check Convergence (Compare fully completed step against old step)
+            error = get_error(T, T_old, imax, jmax)
+
+            if (iter_count > 50000) then
+                print *, "WARNING: ADI did not converge!"
+                exit
+            end if
+        end do
+
+        call system_clock(tick_end)
+        comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
+
     end subroutine solve_ADI
 
 end module cfd_solvers
