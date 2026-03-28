@@ -90,7 +90,7 @@ def generate_plots(config):
 
     plt.figure(figsize=(8, 10))
     contour = plt.contourf(X, Y, T, levels=100, cmap="inferno")
-    plt.colorbar(contour, label="Temperature (°C)")
+    plt.colorbar(contour, label="Temperature $(\\degree C)$")
 
     plt.title(config["title"], fontsize=14)
     plt.xlabel("X Coordinate (m)", fontsize=12)
@@ -119,7 +119,7 @@ def generate_plots(config):
 
     ax1.set_title("Temperature Profile along Y (Constant X slices)")
     ax1.set_xlabel("Y Coordinate (m)")
-    ax1.set_ylabel("Temperature (°C)")
+    ax1.set_ylabel("Temperature $(\\degree C)$")
     ax1.grid(True, linestyle="--", alpha=0.7)
     ax1.legend(loc="upper right", fontsize=8)
 
@@ -132,7 +132,7 @@ def generate_plots(config):
 
     ax2.set_title("Temperature Profile along X (Constant Y slices)")
     ax2.set_xlabel("X Coordinate (m)")
-    ax2.set_ylabel("Temperature (°C)")
+    ax2.set_ylabel("Temperature $(\\degree C)$")
     ax2.grid(True, linestyle="--", alpha=0.7)
     ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=4, fontsize=8)
 
