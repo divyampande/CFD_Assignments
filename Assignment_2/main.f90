@@ -128,18 +128,18 @@ program main
     ! write(csv_id, '(A10, A, A20, A, A20, A, A15)') "Method", ",", "Iterations", ",", "Comp. Time (ms)", ",", "Omega"
     ! close(csv_id)
 
-    ! --- Benchmarking Problem 1 ---
-    print *, "--- Running Problem 1 Benchmarks ---"
-    call benchmark_solver("PGS")
-    call benchmark_solver("LGS")
-    call benchmark_solver("ADI")
-    call benchmark_solver("PSOR", best_omega_psor)
-    call benchmark_solver("LSOR", best_omega_lsor)
+    ! ! --- Benchmarking Problem 1 ---
+    ! print *, "--- Running Problem 1 Benchmarks ---"
+    ! call benchmark_solver("PGS")
+    ! call benchmark_solver("LGS")
+    ! call benchmark_solver("ADI")
+    ! call benchmark_solver("PSOR", best_omega_psor)
+    ! call benchmark_solver("LSOR", best_omega_lsor)
     
-    ! --- Benchmarking Problem 2 ---
-    print *, "--- Running Problem 2 Benchmarks ---"
-    call benchmark_solver("LSOR_P2a", best_omega_lsor)
-    call benchmark_solver("LSOR_P2b", best_omega_lsor)
+    ! ! --- Benchmarking Problem 2 ---
+    ! print *, "--- Running Problem 2 Benchmarks ---"
+    ! call benchmark_solver("LSOR_P2a", best_omega_lsor)
+    ! call benchmark_solver("LSOR_P2b", best_omega_lsor)
 
 ! INTERNAL SUBROUTINES
 contains
