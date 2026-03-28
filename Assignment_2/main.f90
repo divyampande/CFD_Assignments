@@ -125,7 +125,7 @@ program main
     ! ! Comment these out if you just want to run the solvers without benchmarking. 
     ! ! Recommended to run the benchmarks separately since they will take a long time to execute.
     ! open(newunit=csv_id, file='results/performance.csv', status='replace')
-    ! write(csv_id, '(A10, A20, A20, A15)') "Method", "Iterations", "Comp. Time (ms)", "Omega"
+    ! write(csv_id, '(A10, A, A20, A, A20, A, A15)') "Method", ",", "Iterations", ",", "Comp. Time (ms)", ",", "Omega"
     ! close(csv_id)
 
     ! ! --- Benchmarking Problem 1 ---
@@ -246,9 +246,9 @@ contains
 
         open(newunit=csv_id, file='results/performance.csv', status='old', position='append', action='write')
         if (present(omega_val)) then
-            write(csv_id, '(A10, I20, F20.3, F15.3)') solver_name, iters, avg_time, omega
+            write(csv_id, '(A10, A, I20, A, F20.3, A, F15.3)') solver_name, ",", iters, ",", avg_time, ",", omega
         else
-            write(csv_id, '(A10, I20, F20.3, A15)') solver_name, iters, avg_time, "N/A"
+            write(csv_id, '(A10, A, I20, A, F20.3, A, A15)') solver_name, ",", iters, ",", avg_time, ",", "N/A"
         end if
         close(csv_id)
         
