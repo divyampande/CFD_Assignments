@@ -113,7 +113,7 @@ program main
     ! Apply Dirichlet Boundaries
     T_q(:, 1) = 40.0_wp     ! Bottom Wall
     T_q(1, :) = 0.0_wp      ! Left Wall
-    ! T_q(1, 1) = (40.0_wp + 0.0_wp) / 2.0_wp  ! Corner Averaging
+    T_q(1, 1) = (40.0_wp + 0.0_wp) / 2.0_wp  ! Corner Averaging
     
     ! We will use the best_omega_lsor
     call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, best_omega_lsor, iters, c_time)
@@ -157,11 +157,11 @@ contains
         T_array(1, :)     = BC_list(3)  ! Left
         T_array(max_i, :) = BC_list(4)  ! Right
 
-        ! ! Corners (Average of adjacent walls)
-        ! T_array(1, 1)         = (BC_list(1) +  BC_list(3)) / 2.0_wp  ! Bottom-Left
-        ! T_array(max_i, 1)     = (BC_list(1) +  BC_list(4)) / 2.0_wp  ! Bottom-Right
-        ! T_array(1, max_j)     = (BC_list(2) +  BC_list(3)) / 2.0_wp  ! Top-Left
-        ! T_array(max_i, max_j) = (BC_list(2) +  BC_list(4)) / 2.0_wp  ! Top-Right
+        ! Corners (Average of adjacent walls)
+        T_array(1, 1)         = (BC_list(1) +  BC_list(3)) / 2.0_wp  ! Bottom-Left
+        T_array(max_i, 1)     = (BC_list(1) +  BC_list(4)) / 2.0_wp  ! Bottom-Right
+        T_array(1, max_j)     = (BC_list(2) +  BC_list(3)) / 2.0_wp  ! Top-Left
+        T_array(max_i, max_j) = (BC_list(2) +  BC_list(4)) / 2.0_wp  ! Top-Right
     end subroutine reset_grid
 
     ! Writes the 2D grid into a 1D X, Y, T format for Python

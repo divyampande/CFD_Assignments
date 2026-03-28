@@ -89,7 +89,9 @@ def generate_plots(config):
     T = grid.values
 
     plt.figure(figsize=(8, 10))
-    contour = plt.contourf(X, Y, T, levels=100, cmap="inferno")
+    contour = plt.contourf(X, Y, T, levels=50, cmap="plasma")
+    contour_lines = plt.contour(X, Y, T, levels=20, colors="black", linewidths=0.5)
+    plt.clabel(contour_lines, inline=True, fontsize=8, fmt="%1.1f")
     plt.colorbar(contour, label="Temperature $(\\degree C)$")
 
     plt.title(config["title"], fontsize=14)
@@ -170,6 +172,3 @@ if __name__ == "__main__":
 
     print("=========================================================")
     print("[SUCCESS] All post-processing complete.")
-
-    # Display the plots
-    # plt.show()
