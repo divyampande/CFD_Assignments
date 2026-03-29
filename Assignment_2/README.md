@@ -19,17 +19,52 @@ This module implements a suite of numerical solvers for the 2D Laplace equation.
 * `main.f90`: The main execution script. Handles grid initialization, boundary application, $\omega$ optimization loops, and CSV I/O.
 * `plotter.py`: Python post-processing pipeline. Dynamically reads Fortran CSV outputs, mirrors the quarter-domain symmetry back to full scale, and generates 2D contours and line plots.
 
+## Dependencies
+
+This project requires both a Fortran compiler for the computational engine and a Python environment for data visualization.
+
+### 1. Fortran Environment
+The core numerical solvers are written in Fortran 90. **gfortran** (GNU Fortran) is the recommended compiler.
+
+* **Linux:**
+  ```bash
+  sudo apt install gfortran
+  ```
+* **macOS:**
+  ```bash
+  brew install gcc
+  ```
+* **Windows:** Available via [MinGW-w64](https://www.mingw-w64.org/) or [MSYS2](https://www.msys2.org/).
+
+### 2. Python Environment
+The `plotter.py` script requires **Python 3.8+** and the following libraries for data manipulation and visualization:
+
+* **Pandas:** Used for reading CSV data.
+* **NumPy:** Used for array mirroring (symmetry handling) and data parsing.
+* **Matplotlib:** Used for generating 2D contour maps and convergence line plots.
+
+You can easily install the required Python dependencies using pip:
+```bash
+pip install pandas numpy matplotlib
+```
+
 ## Build and Execute
-1. **Compile the Fortran core:**
+*Open the project root in a terminal and follow the given steps:*
+1. **Run the Python Script:**
+   ```bash
+   python plotter.py
+   ```
+   *(Note: This will create a `results/` directory in the project root.)*
+2. **Compile the Fortran core:**
    ```bash
    gfortran -O3 cfd_solvers.f90 main.f90 -o heat_solver
    ```
-2. **Run the computational engine:**
+3. **Run the computational engine:**
    ```bash
    ./heat_solver
    ```
    *(Note: This will populate the `results/` directory with CSV data).*
-3. **Run the post-processing pipeline:**
+4. **Run the post-processing pipeline:**
    ```bash
    python plotter.py
    ```
