@@ -14,15 +14,15 @@ program main
     integer, parameter :: imax = 31, jmax = 41
     real(wp), parameter :: L = 0.3_wp, W = 0.4_wp
     real(wp), parameter :: BC(4) = [40.0_wp, 10.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
-    real(wp), parameter :: BC_P2(4) = [40.0_wp, 40.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
-    real(wp) :: dx, dy
-    
-    ! Data Arrays
     real(wp) :: T(imax, jmax)
 
-    ! Data Arrays for Quarter Domain
+    ! Grid Parameters (Problem 2 - Quarter Domain)
     integer, parameter :: imax_q = 16, jmax_q = 21
+    real(wp), parameter :: BC_P2(4) = [40.0_wp, 40.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
     real(wp) :: T_q(imax_q, jmax_q)
+
+    ! Solver Parameters
+    real(wp) :: dx, dy
     
     ! Tracking variables
     integer :: iters, csv_id, w_int
