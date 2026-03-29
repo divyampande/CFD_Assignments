@@ -18,7 +18,7 @@
 
 ! Performance Checks
 .TRUE.      ! Omega optimization
-.TRUE.      ! Benchmarking
+.FALSE.      ! Benchmarking
 .FALSE.     ! Quarter Domain
 
 ! Omega, these will be used if the omega optimization is set to FALSE

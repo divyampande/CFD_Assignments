@@ -274,10 +274,10 @@ contains
     end subroutine export_to_csv
 
     ! Benchmarker
-    subroutine benchmark_solver(solver_name, base_name, omega_val)
+    subroutine benchmark_solver(solver_name, base_name_val, omega_val)
         character(len=*), intent(in)   :: solver_name
         real(wp), intent(in), optional :: omega_val
-        character(len=*), intent(in)   :: base_name
+        character(len=*), intent(in)   :: base_name_val
 
         real(wp) :: t_start, t_end, avg_time
         integer  :: rep
@@ -288,7 +288,7 @@ contains
         else
             omega = 1.0_wp
         end if
-
+        base_name = base_name_val
         avg_time = 0.0_wp
         call cpu_time(t_start)
         
