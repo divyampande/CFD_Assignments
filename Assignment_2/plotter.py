@@ -23,13 +23,13 @@ CONFIGS = [
         "W": 0.4,
     },
     {
-        "prefix": "prob2_caseA",
+        "prefix": "prob2a",
         "title": "Problem 2 (Case A): Symmetry Boundary Conditions",
         "L": 0.3,
         "W": 0.4,
     },
     {
-        "prefix": "prob2_caseB",
+        "prefix": "prob2b",
         "title": "Problem 2 (Case B): Quarter Domain Symmetry",
         "L": 0.3,
         "W": 0.4,

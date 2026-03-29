@@ -11,33 +11,122 @@ program main
     implicit none
 
     ! Grid Parameters (Problem 1)
-    integer, parameter :: imax = 31, jmax = 41
-    real(wp), parameter :: L = 0.3_wp, W = 0.4_wp
-    real(wp), parameter :: BC(4) = [40.0_wp, 10.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
-    real(wp) :: T(imax, jmax)
-
-    ! Grid Parameters (Problem 2 - Quarter Domain)
-    integer, parameter :: imax_q = 16, jmax_q = 21
-    real(wp), parameter :: BC_P2(4) = [40.0_wp, 40.0_wp, 0.0_wp, 0.0_wp]  ! Bottom, Top, Left, Right
-    real(wp) :: T_q(imax_q, jmax_q)
-
-    ! Solver Parameters
+    integer :: imax, jmax
+    real(wp) :: L, W
+    real(wp) :: BC(4)        ! Bottom, Top, Left, Right
     real(wp) :: dx, dy
-    
-    ! Tracking variables
+
+    ! Data Arrays
+    real(wp), allocatable :: T(:,:)
+
+    ! Data Arrays for Quarter Domain
+    integer :: imax_q, jmax_q
+    real(wp), allocatable :: T_q(:,:)
+
+    ! Tracking & Timing variables
     integer :: iters, csv_id, w_int
     real(wp) :: c_time, omega
     integer :: min_iters_psor, min_iters_lsor
     real(wp) :: best_omega_psor, best_omega_lsor
-    
-    ! Timing variables
     integer, parameter :: N_REPEAT = 200
+
+    ! Logical Variables
+    Logical :: benchmark_mode, optimize_omega, quarter_domain
+
+    ! File I/O variables
+    integer :: file_unit
+    character(len=256) :: filename
+    character(len=256) :: base_name   ! Holds the name without extension
+    character(len=256) :: out_file    ! Holds the final CSV path
+    integer :: dot_idx, slash_idx     ! For string manipulation
+
+    ! Read the input filename from command line arguments
+    call get_command_argument(1, filename)
+
+    if (trim(filename) == '') then
+        print *, "ERROR: No input file provided!"
+        print *, "Usage: ./cfd_solver <input_file.in>"
+        stop
+    end if
+
+    ! Output file naming logic:
+    ! Find the last slash to strip any folder paths (e.g., "inputs/prob1.in" to "prob1.in")
+    slash_idx = index(trim(filename), '/', back=.true.)
+    if (slash_idx > 0) then
+        base_name = filename(slash_idx+1 : len_trim(filename))
+    else
+        base_name = trim(filename)
+    end if
+    
+    ! Find the last dot to strip the extension (e.g., "prob1.in" to "prob1")
+    dot_idx = index(trim(base_name), '.', back=.true.)
+    if (dot_idx > 0) then
+        base_name = base_name(1 : dot_idx-1)
+    end if
+    
+    ! Glue it all together into the final relative path
+    out_file = "results/" // trim(base_name) // "_results.csv"
+
+    print *, "Reading parameters from: ", trim(filename)
+
+    ! Read input file and extract parameters
+    open(newunit=file_unit, file=trim(filename), status='old', action='read')
+
+    read(file_unit, *) ! Skip header
+    read(file_unit, *) ! Skip naming comment
+    read(file_unit, *) ! Skip plotting comment
+    read(file_unit, *) ! Skip separator
+    read(file_unit, *) ! Skip section title
+    read(file_unit, *) imax
+    read(file_unit, *) jmax
+
+    read(file_unit, *) ! Skip blank line
+    read(file_unit, *) ! Skip section title
+    read(file_unit, *) L
+    read(file_unit, *) W
+
+    read(file_unit, *) ! Skip blank line
+    read(file_unit, *) ! Skip section title
+    read(file_unit, *) BC(1) ! Bottom
+    read(file_unit, *) BC(2) ! Top
+    read(file_unit, *) BC(3) ! Left
+    read(file_unit, *) BC(4) ! Right
+
+    read(file_unit, *) ! Skip blank line
+    read(file_unit, *) ! Skip section title
+    read(file_unit, *) optimize_omega
+    read(file_unit, *) benchmark_mode
+    read(file_unit, *) quarter_domain
+
+    read(file_unit, *) ! Skip blank line
+    read(file_unit, *) ! Skip section title
+    if (.NOT. (optimize_omega)) then
+        read(file_unit, *) best_omega_psor
+        read(file_unit, *) best_omega_lsor
+    else
+        read(file_unit, *) ! Skip PSOR Omega
+        read(file_unit, *) ! Skip LSOR Omega
+    end if
+
+    close(file_unit)
+
+    ! Now that we know imax and jmax, we can create the arrays in memory
+    allocate(T(imax, jmax))
+
+    ! Setup for Quarter Domain (Problem 2b) dynamically based on full grid
+    if (quarter_domain) then
+        L = L / 2.0_wp
+        W = W / 2.0_wp
+    end if
+    imax_q = (imax + 1) / 2
+    jmax_q = (jmax + 1) / 2
+    allocate(T_q(imax_q, jmax_q))
 
     ! Pre-compute grid spacing
     dx = L / real(imax - 1, wp)
     dy = W / real(jmax - 1, wp)
 
-    ! INITIALIZATION & BOUNDARY CONDITIONS (Problem 1)
+    ! INITIALIZATION & BOUNDARY CONDITIONS
     call reset_grid(T, imax, jmax, BC)
     
     print *, "--- 2D Heat Conduction Solver Initialized ---"
@@ -47,99 +136,94 @@ program main
 
     ! RELAXATION FACTOR OPTIMIZERS (Sweeping omega 1.0 to 1.9)
     
-    ! Optimize PSOR
-    min_iters_psor = 999999
-    best_omega_psor = 1.0_wp
-    
-    ! Since I already ran between 1 to 1.9 with a step of 0.001,
-    ! I already know the optimal omega is around 1.835, so I will just sweep,
-    ! between 1.8 and 1.85 to save time. If I had to do the entire range, I would just change the limits of this loop.
-    do w_int = 1800, 1850
-        omega = real(w_int, wp) / 1000.0_wp
-        call reset_grid(T, imax, jmax, BC)
-        call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
+    if (optimize_omega) then
+         print *, "Optimizing relaxation factors for PSOR and LSOR..."
+        ! Optimize PSOR
+        min_iters_psor = 999999
+        best_omega_psor = 1.0_wp
         
-        ! Print every test to the table
-        write(*, '(A10, I20, F20.6, F15.3)') "PSOR", iters, c_time, omega
-        
-        ! Save the best one
-        if (iters < min_iters_psor) then
-            min_iters_psor = iters
-            best_omega_psor = omega
-        end if
-    end do
-    print *, ">> OPTIMAL PSOR: Omega = ", best_omega_psor, min_iters_psor, " iters"
+        ! Since I already ran between 1 to 1.9 with a step of 0.001,
+        ! I already know the optimal omega is around 1.835, so I will just sweep,
+        ! between 1.8 and 1.85 to save time. If I had to do the entire range, I would just change the limits of this loop.
+        do w_int = 1800, 1850
+            omega = real(w_int, wp) / 1000.0_wp
+            call reset_grid(T, imax, jmax, BC)
+            call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
 
-    ! Optimize LSOR
-    min_iters_lsor = 999999
-    best_omega_lsor = 1.0_wp
-    
-    ! Since I already ran between 1 to 1.9 with a step of 0.001,
-    ! I already know the optimal omega is around 1.777, so I will just sweep,
-    ! between 1.75 and 1.8 to save time. If I had to do the entire range, I would just change the limits of this loop.
-    do w_int = 1750, 1800
-        omega = real(w_int, wp) / 1000.0_wp
-        call reset_grid(T, imax, jmax, BC)
-        call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
-        
-        write(*, '(A10, I20, F20.6, F15.3)') "LSOR", iters, c_time, omega
-        
-        if (iters < min_iters_lsor) then
-            min_iters_lsor = iters
-            best_omega_lsor = omega
-        end if
-    end do
-    print *, ">> OPTIMAL LSOR: Omega = ", best_omega_lsor, min_iters_lsor, " iters"
+            ! Print every test to the table
+            write(*, '(A10, I20, F20.6, F15.3)') "PSOR", iters, c_time, omega
+
+            ! Save the best one
+            if (iters < min_iters_psor) then
+                min_iters_psor = iters
+                best_omega_psor = omega
+            end if
+        end do
+        print *, ">> OPTIMAL PSOR: Omega = ", best_omega_psor, min_iters_psor, " iters"
+
+        ! Optimize LSOR
+        min_iters_lsor = 999999
+        best_omega_lsor = 1.0_wp
+
+        ! Since I already ran between 1 to 1.9 with a step of 0.001,
+        ! I already know the optimal omega is around 1.777, so I will just sweep,
+        ! between 1.75 and 1.8 to save time. If I had to do the entire range, I would just change the limits of this loop.
+        do w_int = 1750, 1800
+            omega = real(w_int, wp) / 1000.0_wp
+            call reset_grid(T, imax, jmax, BC)
+            call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
+
+            write(*, '(A10, I20, F20.6, F15.3)') "LSOR", iters, c_time, omega
+
+            if (iters < min_iters_lsor) then
+                min_iters_lsor = iters
+                best_omega_lsor = omega
+            end if
+        end do
+        print *, ">> OPTIMAL LSOR: Omega = ", best_omega_lsor, min_iters_lsor, " iters"
+    end if
 
     ! DATA EXPORT
     ! We will use LSOR to generate the final steady-state field since all 
     ! methods converge to the exact same physical answer.
-    print *, "--- Running Problem 1 ---"
-    call reset_grid(T, imax, jmax, BC)
-    call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
-    call export_to_csv("results/prob1_results.csv", T, imax, jmax, dx, dy)
-
-    ! Problem 2 Case A: Change top BC to 40.0 and solve again
-    ! We will just use the best LSOR from Problem 1 to generate the final field for Problem 2a as well.
-
-    print *, "--- Running Problem 2 Cases ---"
-    call reset_grid(T, imax, jmax, BC_P2)
-    call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
-    call export_to_csv("results/prob2_caseA_results.csv", T, imax, jmax, dx, dy)
-
-    ! Problem 2 Case B (Quarter Domain Symmetry)
-    T_q = 0.0_wp
+    if (quarter_domain) then
+        print *, "Running Quarter Domain Solver for: ", trim(base_name)
+        ! Problem 2 Case B (Quarter Domain Symmetry)
+        T_q = 0.0_wp
     
-    ! Apply Dirichlet Boundaries
-    T_q(:, 1) = 40.0_wp     ! Bottom Wall
-    T_q(1, :) = 0.0_wp      ! Left Wall
-    T_q(1, 1) = (40.0_wp + 0.0_wp) / 2.0_wp  ! Corner Averaging
-    
-    ! We will use the best_omega_lsor
-    call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, best_omega_lsor, iters, c_time)
-    call export_to_csv("results/prob2_caseB_results.csv", T_q, imax_q, jmax_q, dx, dy)
-    
-    ! ! TIMING ANALYSIS 
-    ! ! For a more rigorous timing analysis, we could repeat the solver multiple times and average the time.
-    ! ! This is especially useful for very fast methods where timing can be noisy.
-    ! ! Comment these out if you just want to run the solvers without benchmarking. 
-    ! ! Recommended to run the benchmarks separately since they will take a long time to execute.
-    ! open(newunit=csv_id, file='results/performance.csv', status='replace')
-    ! write(csv_id, '(A10, A, A20, A, A20, A, A15)') "Method", ",", "Iterations", ",", "Comp. Time (ms)", ",", "Omega"
-    ! close(csv_id)
+        ! Apply Dirichlet Boundaries
+        T_q(:, 1) = BC(1)     ! Bottom Wall
+        T_q(1, :) = BC(3)     ! Left Wall
+        T_q(1, 1) = (BC(1) + BC(3)) / 2.0_wp  ! Corner Averaging
 
-    ! ! --- Benchmarking Problem 1 ---
-    ! print *, "--- Running Problem 1 Benchmarks ---"
-    ! call benchmark_solver("PGS")
-    ! call benchmark_solver("LGS")
-    ! call benchmark_solver("ADI")
-    ! call benchmark_solver("PSOR", best_omega_psor)
-    ! call benchmark_solver("LSOR", best_omega_lsor)
+        call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, best_omega_lsor, iters, c_time)
+        call export_to_csv(trim(out_file), T_q, imax_q, jmax_q, dx, dy)
+    else
+        print *, "Running Full Domain Solver for: ", trim(base_name)
+        call reset_grid(T, imax, jmax, BC)
+        call solve_LSOR(T, imax, jmax, dx, dy, best_omega_lsor, iters, c_time)
+        call export_to_csv(trim(out_file), T, imax, jmax, dx, dy)
+    end if
     
-    ! ! --- Benchmarking Problem 2 ---
-    ! print *, "--- Running Problem 2 Benchmarks ---"
-    ! call benchmark_solver("LSOR_P2a", best_omega_lsor)
-    ! call benchmark_solver("LSOR_P2b", best_omega_lsor)
+    ! TIMING ANALYSIS 
+    ! For a more rigorous timing analysis, we could repeat the solver multiple times and average the time.
+    ! This is especially useful for very fast methods where timing can be noisy.
+    if (benchmark_mode) then
+        open(newunit=csv_id, file='results/performance_' // trim(base_name) // ".csv", status='replace')
+        write(csv_id, '(A20, A, A20, A, A20, A, A15)') "Method", ",", "Iterations", ",", "Comp. Time (ms)", ",", "Omega"
+        close(csv_id)
+
+        print *, "Running benchmarks for all solvers..."
+        if (quarter_domain) then
+            call benchmark_solver("LSOR_P2b", trim(base_name), best_omega_lsor)
+        else
+            call benchmark_solver("PGS", trim(base_name))
+            call benchmark_solver("LGS", trim(base_name))
+            call benchmark_solver("ADI", trim(base_name))
+            call benchmark_solver("PSOR", trim(base_name), best_omega_psor)
+            call benchmark_solver("LSOR", trim(base_name), best_omega_lsor)
+        end if
+    end if    
 
 ! INTERNAL SUBROUTINES
 contains
@@ -165,15 +249,15 @@ contains
     end subroutine reset_grid
 
     ! Writes the 2D grid into a 1D X, Y, T format for Python
-    subroutine export_to_csv(filename, T_array, max_i, max_j, d_x, d_y)
-        character(len=*), intent(in) :: filename
+    subroutine export_to_csv(outfilename, T_array, max_i, max_j, d_x, d_y)
+        character(len=*), intent(in) :: outfilename
         real(wp), intent(in)         :: T_array(:,:), d_x, d_y
         integer, intent(in)          :: max_i, max_j
         
         integer  :: i, j
         real(wp) :: x_pos, y_pos
 
-        open(newunit=csv_id, file=filename, status='replace')
+        open(newunit=csv_id, file=outfilename, status='replace')
         write(csv_id, '(A)') "X,Y,T"
         
         do j = 1, max_j
@@ -190,10 +274,11 @@ contains
     end subroutine export_to_csv
 
     ! Benchmarker
-    subroutine benchmark_solver(solver_name, omega_val)
+    subroutine benchmark_solver(solver_name, base_name, omega_val)
         character(len=*), intent(in)   :: solver_name
         real(wp), intent(in), optional :: omega_val
-        
+        character(len=*), intent(in)   :: base_name
+
         real(wp) :: t_start, t_end, avg_time
         integer  :: rep
         real(wp) :: dummy_c_time
@@ -225,10 +310,7 @@ contains
                     call reset_grid(T, imax, jmax, BC)
                     call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
                 
-                ! PROBLEM 2 CASES
-                case ("LSOR_P2a")
-                    call reset_grid(T, imax, jmax, BC_P2) ! Use Problem 2 Boundaries
-                    call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+                ! Quarter Domain Case
                 case ("LSOR_P2b")
                     T_q = 0.0_wp
                     T_q(:, 1) = 40.0_wp     ! Bottom Wall
@@ -244,13 +326,11 @@ contains
         call cpu_time(t_end)
         avg_time = (t_end - t_start) / real(N_REPEAT, wp) * 1000.0_wp  ! Convert to milliseconds
 
-        open(newunit=csv_id, file='results/performance.csv', status='old', position='append', action='write')
+        open(newunit=csv_id, file='results/performance_' // trim(base_name) // ".csv", status='old', position='append', action='write')
         if (present(omega_val)) then
-            write(csv_id, '(A10, A, I20, A, F20.3, A, F15.3)') solver_name, ",", iters, ",", avg_time, ",", omega
-            write(csv_id, '(A10, A, I20, A, F20.3, A, F15.3)') solver_name, ",", iters, ",", avg_time, ",", omega
+            write(csv_id, '(A20, A, I20, A, F20.3, A, F15.3)') solver_name // "_" // trim(base_name), ",", iters, ",", avg_time, ",", omega
         else
-            write(csv_id, '(A10, A, I20, A, F20.3, A, A15)') solver_name, ",", iters, ",", avg_time, ",", "N/A"
-            write(csv_id, '(A10, A, I20, A, F20.3, A, A15)') solver_name, ",", iters, ",", avg_time, ",", "N/A"
+            write(csv_id, '(A20, A, I20, A, F20.3, A, A15)') solver_name // "_" // trim(base_name), ",", iters, ",", avg_time, ",", "N/A"
         end if
         close(csv_id)
         
