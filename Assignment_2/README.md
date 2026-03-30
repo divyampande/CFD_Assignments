@@ -19,6 +19,19 @@ This module implements a suite of numerical solvers for the 2D Laplace equation.
 * `main.f90`: The main execution script. Handles grid initialization, boundary application, $\omega$ optimization loops, and CSV I/O.
 * `plotter.py`: Python post-processing pipeline. Dynamically reads Fortran CSV outputs, mirrors the quarter-domain symmetry back to full scale, and generates 2D contours and line plots.
 
+## Repository Structure
+```text
+├── results/             # Directory for storing results
+├── cfd_solvers.f90      # Core Fortran module (Solvers & TDMA)
+├── main.f90             # Main execution script
+├── plotter.py           # Python visualization pipeline
+├── sample_input.in      # Template for grid and boundary parameters
+├── .gitignore           # Ignores compiled binaries and custom .in files
+├── .gitattributes
+├── LICENSE
+└── README.md
+```
+
 ## Dependencies
 
 This project requires both a Fortran compiler for the computational engine and a Python environment for data visualization.
@@ -48,23 +61,69 @@ You can easily install the required Python dependencies using pip:
 pip install pandas numpy matplotlib
 ```
 
+## Input File Configuration
+The Fortran solver requires a formatted input file to run. This prevents the need to recompile the source code every time you want to test a new grid size or boundary condition. 
+
+A sample input file (`sample_input.in`) is included in this repository. The solver expects the variables to be provided in the exact order shown below. Inline comments starting with `!` are ignored by the parser.
+
+**Format:**
+```text
+! CFD Solver Input File
+! Ideally, do not give very long names to the input file. Keep it 10 characters or less.
+! Also, since the name of the output file depends on the input file, you have to manually change the names in plotting script.
+! ==========================================
+! Grid Parameters
+31          ! imax (Number of nodes in X)
+41          ! jmax (Number of nodes in Y)
+
+! Physical Dimensions (meters)
+0.3         ! L (Length in X)
+0.4         ! W (Width in Y)
+
+! Dirichlet Boundary Conditions (Celsius)
+40.0        ! T_Bottom 
+10.0        ! T_Top    
+0.0         ! T_Left   
+0.0         ! T_Right
+
+! Performance Checks
+.TRUE.      ! Omega optimization
+.FALSE.      ! Benchmarking
+.FALSE.     ! Quarter Domain
+
+! Omega, these will be used if the omega optimization is set to FALSE
+1.835       ! PSOR Omega 
+1.777       ! LSOR Omega
+```
+
 ## Build and Execute
-*Open the project root in a terminal and follow the given steps:*
-1. **Run the Python Script:**
+*Open the project root in a terminal and follow these steps:*
+
+1. **Prepare the Output Directory:**
+   Ensure there is a folder to catch the CSV data.
    ```bash
-   python plotter.py
+   mkdir -p results
    ```
-   *(Note: This will create a `results/` directory in the project root.)*
 2. **Compile the Fortran core:**
    ```bash
    gfortran -O3 cfd_solvers.f90 main.f90 -o heat_solver
    ```
 3. **Run the computational engine:**
+   Pass your desired input file as an argument.
    ```bash
-   ./heat_solver
+   ./heat_solver sample_input.in
    ```
    *(Note: This will populate the `results/` directory with CSV data).*
-4. **Run the post-processing pipeline:**
+5. **Run the post-processing pipeline:**
+   Generate the contours and line plots from the output data.
    ```bash
    python plotter.py
    ```
+   *(Note: The generated .png plots will be saved inside the results/ directory).*
+   
+## Expected Outputs
+Upon successful execution of both the solver and the plotter, the `results/` directory will contain:
+* `*_results.csv`: Raw temperature grid data for each problem.
+* `*_contour.png`: 2D color maps of the steady-state temperature distribution.
+* `*_line_plots.png`: Temperature profiles extracted at 0.05m intervals along the X and Y axes.
+* `performance.csv` *(Optional)*: If benchmarking is enabled, contains wall-time and iteration counts for the different solver methods.
