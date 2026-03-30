@@ -3,3 +3,9 @@
 *.o
 *.mod
 *.exe
+
+# Ignore all input files
+*.in
+
+# Except for the sample input file
+!sample_input.in
