@@ -37,43 +37,26 @@ contains
         end do
     end function get_error
 
-    ! Thomas Algorithm (TDMA) for solving tridiagonal systems
-    ! Equation form: a(i)*x(i-1) + b(i)*x(i) + c(i)*x(i+1) = d(i)
-    subroutine tdma(a, b, c, d, x, n)
+    ! TDMA for constant-coefficient systems
+    subroutine tdma_fast(a, cp, inv_denom, d, dp, x, n)
         integer, intent(in)  :: n
-        real(wp), intent(in) :: a(n), b(n), c(n), d(n)
-        real(wp), intent(out):: x(n)
+        real(wp), intent(in) :: a                 
+        real(wp), intent(in) :: cp(n), inv_denom(n), d(n)
+        real(wp), intent(out):: dp(n), x(n)       
         
-        ! Arrays for the modified coefficients
-        real(wp) :: cp(n), dp(n)
-        real(wp) :: denom
         integer  :: i
         
-        ! Modify the first row coefficients
-        cp(1) = c(1) / b(1)
-        dp(1) = d(1) / b(1)
+        dp(1) = d(1) * inv_denom(1)
         
-        ! Loop through the rest of the rows
         do i = 2, n
-            denom = b(i) - a(i) * cp(i-1)
-
-            if (i < n) then
-                cp(i) = c(i) / denom
-            end if
-            
-            dp(i) = (d(i) - a(i) * dp(i-1)) / denom
+            dp(i) = (d(i) - a * dp(i-1)) * inv_denom(i)
         end do
         
-        ! The last variable is fully solved now
         x(n) = dp(n)
-        
-        ! Substitute back up the line to solve the rest
         do i = n - 1, 1, -1
             x(i) = dp(i) - cp(i) * x(i+1)
         end do
-        
-    end subroutine tdma
-
+    end subroutine tdma_fast
 
     ! EXPLICIT SOLVERS (Point-by-Point)
     ! Point Successive Over-Relaxation (PSOR)
@@ -95,8 +78,7 @@ contains
         ! Precompute domain constants
         beta2 = (dx / dy)**2
         denom = 2.0_wp * (1.0_wp + beta2)
-        
-        ! Precompute PSOR constants to save floating-point operations
+
         omega_compl = 1.0_wp - omega
         omega_denom = omega / denom
 
@@ -110,19 +92,24 @@ contains
             ! The Fused PSOR Sweep
             do j = 2, jmax - 1
                 do i = 2, imax - 1
-                    ! 1. Cache the old value locally (Replaces the massive T_old array)
                     temp_T_old = T(i,j)
                     
-                    ! 2. Standard Gauss-Seidel sum (Division is handled by omega_denom)
+                    ! Standard Gauss-Seidel sum
                     T_GS = T(i+1,j) + T(i-1,j) + beta2 * (T(i,j+1) + T(i,j-1))
                     
-                    ! 3. Apply Relaxation factor
+                    ! Apply Relaxation factor
                     T(i,j) = omega_compl * temp_T_old + omega_denom * T_GS
                     
-                    ! 4. Fused L1 Error calculation (Sum of Absolute Differences)
+                    ! Error calculation
                     error = error + abs(T(i,j) - temp_T_old)
                 end do
             end do
+
+            ! DIVERGENCE TRAP (Catches NaN and Infinity)
+            if (error /= error .or. error > 1.0e10_wp) then
+                iter_count = 999999
+                exit
+            end if
 
             ! Failsafe exit
             if (iter_count > 50000) then
@@ -145,49 +132,72 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
 
-        real(wp) :: T_old(imax, jmax)
-        real(wp) :: error, beta2
+        real(wp) :: error, beta2, temp_T_old
+        real(wp) :: a_val, b_val, c_val, denom_temp
+        real(wp) :: b_base, relax_val
         integer  :: i, j, n
         integer  :: tick_start, tick_end, tick_rate
 
-        real(wp) :: a(imax-2), b(imax-2), c(imax-2), d(imax-2), x(imax-2)
+        real(wp) :: d(imax-2), x(imax-2), dp(imax-2)
+        real(wp) :: cp(imax-2), inv_denom(imax-2) 
 
         call system_clock(tick_start, tick_rate)
 
         beta2 = (dx / dy)**2
         n = imax - 2 
+
+        ! MATRIX SPLITTING GEOMETRY
+        a_val = 1.0_wp
+        c_val = 1.0_wp
+        b_base = -2.0_wp * (1.0_wp + beta2)
+
+        ! Divide the main diagonal by omega
+        b_val = b_base / omega
+        relax_val = b_base * (1.0_wp - omega) / omega
+
+        inv_denom(1) = 1.0_wp / b_val
+        cp(1) = c_val * inv_denom(1)
         
-        a = 1.0_wp
-        b = -2.0_wp * (1.0_wp + beta2)
-        c = 1.0_wp
+        do i = 2, n
+            denom_temp = b_val - a_val * cp(i-1)
+            inv_denom(i) = 1.0_wp / denom_temp  
+            if (i < n) cp(i) = c_val * inv_denom(i)
+        end do
 
         iter_count = 0
         error = 1.0_wp
 
         do while (error > 0.01_wp)
             iter_count = iter_count + 1
-            T_old = T
+            error = 0.0_wp
 
             do j = 2, jmax - 1
                 do i = 2, imax - 1
-                    d(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
+                    d(i-1) = -beta2 * (T(i, j-1) + T(i, j+1)) + relax_val * T(i, j)
                 end do
-
+                
                 d(1) = d(1) - T(1, j) 
                 d(n) = d(n) - T(imax, j)
 
-                call tdma(a, b, c, d, x, n)
+                ! Solve using TDMA
+                call tdma_fast(a_val, cp, inv_denom, d, dp, x, n)
 
-                ! LSOR RELAXATION
+                ! Error calculation
                 do i = 2, imax - 1
-                    T(i, j) = (1.0_wp - omega) * T_old(i, j) + omega * x(i-1)
+                    temp_T_old = T(i, j)
+                    T(i, j) = x(i-1)
+                    error = error + abs(T(i, j) - temp_T_old)
                 end do
             end do
 
-            error = get_error(T, T_old, imax, jmax)
+            ! DIVERGENCE TRAP (Catches NaN and Infinity)
+            if (error /= error .or. error > 1.0e10_wp) then
+                iter_count = 999999
+                exit
+            end if
 
             if (iter_count > 50000) then
-                print *, "WARNING: LSOR did not converge with omega = ", omega
+                print *, "WARNING: LSOR did not converge. Final error =", error
                 exit
             end if
         end do
@@ -205,84 +215,109 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
 
-        real(wp) :: T_old(imax, jmax)
-        real(wp) :: T_half(imax, jmax) ! Array for the half-step
-        real(wp) :: error, beta2, alpha2
+        real(wp) :: T_old(imax, jmax) 
+        real(wp) :: error, beta2, alpha2, denom_temp
         integer  :: i, j, nx, ny
         integer  :: tick_start, tick_end, tick_rate
 
-        ! Arrays for the X-Sweep
-        real(wp) :: ax(imax-2), bx(imax-2), cx(imax-2), rhs_x(imax-2), x_val(imax-2)
-        ! Arrays for the Y-Sweep
-        real(wp) :: ay(jmax-2), by(jmax-2), cy(jmax-2), rhs_y(jmax-2), y_val(jmax-2)
+        ! Matrix Splitting Variables
+        real(wp) :: bx_base, by_base, relax_x, relax_y
+
+        ! X-Sweep TDMA Arrays
+        real(wp) :: d_x(imax-2), x_val(imax-2), dp_x(imax-2)
+        real(wp) :: cp_x(imax-2), inv_denom_x(imax-2)
+        real(wp) :: ax_val, bx_val, cx_val
+
+        ! Y-Sweep TDMA Arrays
+        real(wp) :: d_y(jmax-2), y_val(jmax-2), dp_y(jmax-2)
+        real(wp) :: cp_y(jmax-2), inv_denom_y(jmax-2)
+        real(wp) :: ay_val, by_val, cy_val
 
         call system_clock(tick_start, tick_rate)
 
-        ! Geometric ratios
         beta2 = (dx / dy)**2
         alpha2 = (dy / dx)**2
         nx = imax - 2 
         ny = jmax - 2
-        ax = 1.0_wp;  bx = -2.0_wp * (1.0_wp + beta2);  cx = 1.0_wp
-        ay = 1.0_wp;  by = -2.0_wp * (1.0_wp + alpha2); cy = 1.0_wp
+
+        ! MATRIX SPLITTING
+        ax_val = 1.0_wp; cx_val = 1.0_wp
+        bx_base = -2.0_wp * (1.0_wp + beta2)
+        
+        ay_val = 1.0_wp; cy_val = 1.0_wp
+        by_base = -2.0_wp * (1.0_wp + alpha2)
+
+        ! Divide the main diagonals by omega
+        bx_val = bx_base / omega
+        by_val = by_base / omega
+        relax_x = bx_base * (1.0_wp - omega) / omega
+        relax_y = by_base * (1.0_wp - omega) / omega
+
+        inv_denom_x(1) = 1.0_wp / bx_val
+        cp_x(1) = cx_val * inv_denom_x(1)
+        do i = 2, nx
+            denom_temp = bx_val - ax_val * cp_x(i-1)
+            inv_denom_x(i) = 1.0_wp / denom_temp
+            if (i < nx) cp_x(i) = cx_val * inv_denom_x(i)
+        end do
+
+        inv_denom_y(1) = 1.0_wp / by_val
+        cp_y(1) = cy_val * inv_denom_y(1)
+        do j = 2, ny
+            denom_temp = by_val - ay_val * cp_y(j-1)
+            inv_denom_y(j) = 1.0_wp / denom_temp
+            if (j < ny) cp_y(j) = cy_val * inv_denom_y(j)
+        end do
 
         iter_count = 0
         error = 1.0_wp
         
-        ! Initialize intermediate array so boundaries are correctly populated
-        T_half = T
-
         do while (error > 0.01_wp)
             iter_count = iter_count + 1
             T_old = T
+            error = 0.0_wp
 
-            ! ==========================================
             ! HALF-STEP 1: Implicit X-Sweep
-            ! ==========================================
             do j = 2, jmax - 1
                 do i = 2, imax - 1
-                    ! Explicit side uses the known T_old state
-                    rhs_x(i-1) = -beta2 * (T_half(i, j-1) + T_old(i, j+1))
+                    d_x(i-1) = -beta2 * (T(i, j-1) + T(i, j+1)) + relax_x * T(i, j)
                 end do
 
-                ! Left and Right boundary conditions
-                rhs_x(1)  = rhs_x(1)  - T_half(1, j) 
-                rhs_x(nx) = rhs_x(nx) - T_half(imax, j)
+                d_x(1)  = d_x(1)  - T(1, j) 
+                d_x(nx) = d_x(nx) - T(imax, j)
 
-                call tdma(ax, bx, cx, rhs_x, x_val, nx)
+                call tdma_fast(ax_val, cp_x, inv_denom_x, d_x, dp_x, x_val, nx)
 
-                ! RELAXATION (New intermediate state)
                 do i = 2, imax - 1
-                    T_half(i, j) = omega * x_val(i-1) + (1.0_wp - omega) * T_old(i, j)
+                    T(i, j) = x_val(i-1)
                 end do
             end do
 
-            ! ==========================================
             ! HALF-STEP 2: Implicit Y-Sweep
-            ! ==========================================
             do i = 2, imax - 1
                 do j = 2, jmax - 1
-                    ! Explicit side uses the freshly relaxed T_half state
-                    rhs_y(j-1) = -alpha2 * (T(i-1, j) + T_half(i+1, j))
+                    d_y(j-1) = -alpha2 * (T(i-1, j) + T(i+1, j)) + relax_y * T(i, j)
                 end do
 
-                ! Bottom and Top boundary conditions
-                rhs_y(1)  = rhs_y(1)  - T(i, 1) 
-                rhs_y(ny) = rhs_y(ny) - T(i, jmax)
+                d_y(1)  = d_y(1)  - T(i, 1) 
+                d_y(ny) = d_y(ny) - T(i, jmax)
 
-                call tdma(ay, by, cy, rhs_y, y_val, ny)
+                call tdma_fast(ay_val, cp_y, inv_denom_y, d_y, dp_y, y_val, ny)
 
-                ! RELAXATION (Final new state)
                 do j = 2, jmax - 1
-                    T(i, j) = omega * y_val(j-1) + (1.0_wp - omega) * T_half(i, j)
+                    T(i, j) = y_val(j-1) 
+                    error = error + abs(T(i, j) - T_old(i, j))
                 end do
             end do
 
-            ! Check Convergence (Compare fully completed step against old step)
-            error = get_error(T, T_old, imax, jmax)
+            ! DIVERGENCE TRAP
+            if (error /= error .or. error > 1.0e10_wp) then
+                iter_count = 999999
+                exit
+            end if
 
             if (iter_count > 50000) then
-                print *, "WARNING: ADIR did not converge with omega = ", omega
+                print *, "WARNING: ADIR did not converge. Final error =", error
                 exit
             end if
         end do
@@ -292,7 +327,7 @@ contains
 
     end subroutine solve_ADIR
 
-    ! (g) LSOR for Quarter Domain (Symmetry Boundaries)
+    ! LSOR for Quarter Domain (Symmetry Boundaries)
     subroutine solve_LSOR_sym(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
         real(wp), intent(inout) :: T(:,:)
         integer, intent(in)     :: imax, jmax
@@ -300,71 +335,117 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
 
-        real(wp) :: T_old(imax, jmax), T_star(imax-1)
-        real(wp) :: error, beta2
+        real(wp) :: error, beta2, omega_compl, temp_T_old
+        real(wp) :: a_val, b_val, c_val, denom_temp
         integer  :: i, j, nx
         integer  :: tick_start, tick_end, tick_rate
 
-        ! TDMA Arrays (Size is now imax - 1 because we solve for the right wall too!)
-        real(wp) :: a(imax-1), b(imax-1), c(imax-1), rhs(imax-1)
+        ! TDMA Precomputed Arrays and Work Arrays
+        real(wp) :: d(imax-1), x_val(imax-1), dp(imax-1)
+        real(wp) :: cp(imax-1), inv_denom(imax-1)
 
         call system_clock(tick_start, tick_rate)
 
         beta2 = (dx / dy)**2
         nx = imax - 1 
+        omega_compl = 1.0_wp - omega
 
-        a = 1.0_wp
-        b = -2.0_wp * (1.0_wp + beta2)
-        c = 1.0_wp
+        ! Standard Scalar TDMA Coefficients
+        a_val = 1.0_wp
+        b_val = -2.0_wp * (1.0_wp + beta2)
+        c_val = 1.0_wp
 
-        ! Apply Ghost Node modification for the Right Symmetry Wall (i = imax)
-        a(nx) = 2.0_wp
-        c(nx) = 0.0_wp
+        inv_denom(1) = 1.0_wp / b_val
+        cp(1) = c_val * inv_denom(1)
+        
+        ! Standard internal nodes
+        do i = 2, nx - 1
+            denom_temp = b_val - a_val * cp(i-1)
+            inv_denom(i) = 1.0_wp / denom_temp
+            cp(i) = c_val * inv_denom(i)
+        end do
+        
+        ! Right Symmetry Wall Ghost Node (Index nx)
+        ! Here, a = 2.0 and c = 0.0
+        denom_temp = b_val - 2.0_wp * cp(nx-1)
+        inv_denom(nx) = 1.0_wp / denom_temp
+        cp(nx) = 0.0_wp
 
         iter_count = 0
         error = 1.0_wp
 
         do while (error > 0.01_wp)
             iter_count = iter_count + 1
-            T_old = T
-
-            ! Loop all the way to jmax (Top Symmetry Wall)
-            do j = 2, jmax
-                
-                ! Build RHS
-                do i = 2, imax
-                    ! If we are at the top symmetry line, use the Y-direction ghost node
-                    if (j == jmax) then
-                        rhs(i-1) = -beta2 * (2.0_wp * T(i, j-1))
-                    else
-                        rhs(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
-                    end if
-                end do
-
-                ! Apply Left Dirichlet Boundary (Fixed at 0 C)
-                rhs(1) = rhs(1) - T(1, j) 
-
-                call tdma(a, b, c, rhs, T_star, nx)
-
-                ! Apply Over-Relaxation
-                do i = 2, imax
-                    T(i, j) = omega * T_star(i-1) + (1.0_wp - omega) * T_old(i, j)
-                end do
-            end do
-
             error = 0.0_wp
-            do j = 2, jmax
+
+            ! STANDARD GRID LINES (j = 2 to jmax - 1)
+            do j = 2, jmax - 1
                 do i = 2, imax
-                    error = error + abs(T(i, j) - T_old(i, j))
+                    d(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
+                end do
+                
+                ! Left Dirichlet Boundary
+                d(1) = d(1) - T(1, j) 
+                dp(1) = d(1) * inv_denom(1)
+                do i = 2, nx - 1
+                    dp(i) = (d(i) - a_val * dp(i-1)) * inv_denom(i)
+                end do
+                dp(nx) = (d(nx) - 2.0_wp * dp(nx-1)) * inv_denom(nx) ! Right wall uses a=2.0
+
+                x_val(nx) = dp(nx)
+                do i = nx - 1, 1, -1
+                    x_val(i) = dp(i) - cp(i) * x_val(i+1)
+                end do
+
+                ! Relaxation and Error
+                do i = 2, imax
+                    temp_T_old = T(i, j)
+                    T(i, j) = omega * x_val(i-1) + omega_compl * temp_T_old
+                    error = error + abs(T(i, j) - temp_T_old)
                 end do
             end do
 
-            if (iter_count > 50000) exit
+            ! TOP SYMMETRY LINE ONLY (j = jmax)
+            j = jmax
+            
+            ! Build RHS using Top Wall Ghost Node logic (2.0 * T(i, j-1))
+            do i = 2, imax
+                d(i-1) = -beta2 * (2.0_wp * T(i, j-1))
+            end do
+            d(1) = d(1) - T(1, j) 
+            dp(1) = d(1) * inv_denom(1)
+            do i = 2, nx - 1
+                dp(i) = (d(i) - a_val * dp(i-1)) * inv_denom(i)
+            end do
+            dp(nx) = (d(nx) - 2.0_wp * dp(nx-1)) * inv_denom(nx)
+
+            x_val(nx) = dp(nx)
+            do i = nx - 1, 1, -1
+                x_val(i) = dp(i) - cp(i) * x_val(i+1)
+            end do
+
+            ! Relaxation and Error
+            do i = 2, imax
+                temp_T_old = T(i, j)
+                T(i, j) = omega * x_val(i-1) + omega_compl * temp_T_old
+                error = error + abs(T(i, j) - temp_T_old)
+            end do
+
+            ! DIVERGENCE TRAP
+            if (error /= error .or. error > 1.0e10_wp) then
+                iter_count = 999999
+                exit
+            end if
+
+            if (iter_count > 50000) then
+                print *, "WARNING: LSOR_sym did not converge. Final error =", error
+                exit
+            end if
         end do
 
         call system_clock(tick_end)
         comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
 
     end subroutine solve_LSOR_sym
-
+    
 end module cfd_solvers

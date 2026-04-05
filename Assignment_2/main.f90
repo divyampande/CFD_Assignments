@@ -171,8 +171,8 @@ program main
 
         ! Since I already ran between 1 to 1.9 with a step of 0.001,
         ! I already know the optimal omega is around 1.777, so I will just sweep,
-        ! between 1.75 and 1.8 to save time. If I had to do the entire range, I would just change the limits of this loop.
-        do w_int = 1750, 1800
+        ! between 1.25 and 1.3 to save time. If I had to do the entire range, I would just change the limits of this loop.
+        do w_int = 1250, 1300
             omega = real(w_int, wp) / 1000.0_wp
             call reset_grid(T, imax, jmax, BC)
             call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, c_time)
@@ -192,13 +192,13 @@ program main
 
         ! Since I already ran between 1 to 1.9 with a step of 0.001,
         ! I already know the optimal omega is around 1.832, so I will just sweep,
-        ! between 1.8 and 1.85 to save time. If I had to do the entire range, I would just change the limits of this loop.
-        do w_int = 1800, 1850
+        ! between 1.29 and 1.33 to save time. If I had to do the entire range, I would just change the limits of this loop.
+        do w_int = 1290, 1330
             omega = real(w_int, wp) / 1000.0_wp
             call reset_grid(T, imax, jmax, BC)
             call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, c_time)
 
-            write(*, '(A10, I20, F20.6, F15.3)') "LSOR", iters, c_time, omega
+            write(*, '(A10, I20, F20.6, F15.3)') "ADIR", iters, c_time, omega
 
             if (iters < min_iters_adir) then
                 min_iters_adir = iters
@@ -297,7 +297,7 @@ contains
         end do
         
         close(csv_id)
-        print *, ">> Steady-state data exported to: ", filename
+        print *, ">> Steady-state data exported to: ", outfilename
     end subroutine export_to_csv
 
     ! Benchmarker
@@ -306,61 +306,84 @@ contains
         real(wp), intent(in), optional :: omega_val
         character(len=*), intent(in)   :: base_name_val
 
-        real(wp) :: t_start, t_end, avg_time
+        real(wp) :: avg_time, dummy_c_time
         integer  :: rep
-        real(wp) :: dummy_c_time
+        integer(kind=8) :: t_start, t_end, t_rate 
 
         if (present(omega_val)) then
             omega = omega_val
         else
             omega = 1.0_wp
         end if
+        
         base_name = base_name_val
         avg_time = 0.0_wp
-        call cpu_time(t_start)
         
-        do rep = 1, N_REPEAT
-            select case (solver_name)
-                case ("PGS")
+        ! Start high-resolution timer
+        call system_clock(t_start, t_rate)
+        
+        select case (solver_name)
+            
+            case ("PGS")
+                do rep = 1, N_REPEAT
                     call reset_grid(T, imax, jmax, BC)
                     call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-                case ("LGS")
-                    call reset_grid(T, imax, jmax, BC)
-                    call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-                case ("ADI")
-                    call reset_grid(T, imax, jmax, BC)
-                    call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-                case ("PSOR")
-                    call reset_grid(T, imax, jmax, BC)
-                    call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-                case ("LSOR")
-                    call reset_grid(T, imax, jmax, BC)
-                    call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-                case ("ADIR")
-                    call reset_grid(T, imax, jmax, BC)
-                    call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-
-                ! Quarter Domain Case
-                case ("LSOR_P2b")
-                    T_q = 0.0_wp
-                    T_q(:, 1) = 40.0_wp     ! Bottom Wall
-                    T_q(1, :) = 0.0_wp      ! Left Wall
-                    call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, omega, iters, dummy_c_time)
+                end do
                 
-                case default
-                    print *, "ERROR: Unknown solver passed to benchmark routine!"
-                    stop
-            end select
-        end do
+            case ("LGS")
+                do rep = 1, N_REPEAT
+                    call reset_grid(T, imax, jmax, BC)
+                    call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+                end do
+                
+            case ("ADI")
+                do rep = 1, N_REPEAT
+                    call reset_grid(T, imax, jmax, BC)
+                    call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+                end do
+                
+            case ("PSOR")
+                do rep = 1, N_REPEAT
+                    call reset_grid(T, imax, jmax, BC)
+                    call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+                end do
+                
+            case ("LSOR")
+                do rep = 1, N_REPEAT
+                    call reset_grid(T, imax, jmax, BC)
+                    call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+                end do
+                
+            case ("ADIR")
+                do rep = 1, N_REPEAT
+                    call reset_grid(T, imax, jmax, BC)
+                    call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+                end do
+
+            case ("LSOR_P2b")
+                do rep = 1, N_REPEAT
+                    T_q = 0.0_wp
+                    T_q(:, 1) = BC(1)     
+                    T_q(1, :) = BC(3)     
+                    call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, omega, iters, dummy_c_time)
+                end do
+                
+            case default
+                print *, "ERROR: Unknown solver passed to benchmark routine!"
+                stop
+        end select
         
-        call cpu_time(t_end)
-        avg_time = (t_end - t_start) / real(N_REPEAT, wp) * 1000.0_wp  ! Convert to milliseconds
+        ! End high-resolution timer
+        call system_clock(t_end)
+        
+        ! Calculate accurate average time in milliseconds
+        avg_time = real(t_end - t_start, wp) / real(t_rate, wp) / real(N_REPEAT, wp) * 1000.0_wp 
 
         open(newunit=csv_id, file='results/performance_' // trim(base_name) // ".csv", status='old', position='append', action='write')
         if (present(omega_val)) then
-            write(csv_id, '(A20, A, I20, A, F20.3, A, F15.3)') solver_name // "_" // trim(base_name), ",", iters, ",", avg_time, ",", omega
+            write(csv_id, '(A20, A, I20, A, F20.6, A, F15.3)') solver_name // "_" // trim(base_name), ",", iters, ",", avg_time, ",", omega
         else
-            write(csv_id, '(A20, A, I20, A, F20.3, A, A15)') solver_name // "_" // trim(base_name), ",", iters, ",", avg_time, ",", "N/A"
+            write(csv_id, '(A20, A, I20, A, F20.6, A, A15)') solver_name // "_" // trim(base_name), ",", iters, ",", avg_time, ",", "N/A"
         end if
         close(csv_id)
         
