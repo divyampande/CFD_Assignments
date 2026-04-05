@@ -22,21 +22,6 @@ contains
 
     ! UTILITY FUNCTIONS
 
-    ! Calculates the absolute error sum between iterations
-    real(wp) function get_error(T_new, T_old, imax, jmax)
-        real(wp), intent(in) :: T_new(:,:), T_old(:,:)
-        integer, intent(in)  :: imax, jmax
-        integer :: i, j
-        
-        get_error = 0.0_wp 
-        
-        do j = 2, jmax - 1
-            do i = 2, imax - 1
-                get_error = get_error + abs(T_new(i,j) - T_old(i,j))
-            end do
-        end do
-    end function get_error
-
     ! TDMA for constant-coefficient systems
     subroutine tdma_fast(a, cp, inv_denom, d, dp, x, n)
         integer, intent(in)  :: n
