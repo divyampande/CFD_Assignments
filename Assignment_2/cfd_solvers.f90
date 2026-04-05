@@ -76,59 +76,7 @@ contains
 
 
     ! EXPLICIT SOLVERS (Point-by-Point)
-
-    ! (a) Point Gauss-Seidel Method
-    subroutine solve_PGS(T, imax, jmax, dx, dy, iter_count, comp_time)
-        real(wp), intent(inout) :: T(:,:)
-        integer, intent(in)     :: imax, jmax
-        real(wp), intent(in)    :: dx, dy
-        integer, intent(out)    :: iter_count
-        real(wp), intent(out)   :: comp_time
-        
-        real(wp) :: T_old(imax, jmax)
-        real(wp) :: error, beta2, denom
-        integer  :: i, j
-        integer  :: tick_start, tick_end, tick_rate
-
-        ! Start the timer
-        call system_clock(tick_start, tick_rate)
-
-        beta2 = (dx / dy)**2
-        denom = 2.0_wp * (1.0_wp + beta2)
-
-        iter_count = 0
-        error = 1.0_wp
-
-        do while (error > 0.01_wp)
-            iter_count = iter_count + 1
-            
-            ! Save the current state 
-            T_old = T
-
-            ! The Gauss-Seidel Sweep
-            do j = 2, jmax - 1
-                do i = 2, imax - 1
-                    T(i,j) = ( T(i+1,j) + T(i-1,j) + beta2 * (T(i,j+1) + T(i,j-1)) ) / denom
-                end do
-            end do
-
-            ! Check Convergence
-            error = get_error(T, T_old, imax, jmax)
-
-            ! Safety net against infinite loops
-            if (iter_count > 50000) then
-                print *, "WARNING: PGS did not converge!"
-                exit
-            end if
-        end do
-
-        ! Stop the timer
-        call system_clock(tick_end)
-        comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
-
-    end subroutine solve_PGS
-
-    ! (c) Point Successive Over-Relaxation (PSOR)
+    ! Point Successive Over-Relaxation (PSOR)
     subroutine solve_PSOR(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
         real(wp), intent(inout) :: T(:,:)
         integer, intent(in)     :: imax, jmax
@@ -136,40 +84,49 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
         
-        real(wp) :: T_old(imax, jmax)
-        real(wp) :: error, beta2, denom, T_GS
+        real(wp) :: error, beta2, denom, T_GS, temp_T_old
+        real(wp) :: omega_compl, omega_denom
         integer  :: i, j
         integer  :: tick_start, tick_end, tick_rate
 
         ! Start timer
         call system_clock(tick_start, tick_rate)
 
+        ! Precompute domain constants
         beta2 = (dx / dy)**2
         denom = 2.0_wp * (1.0_wp + beta2)
+        
+        ! Precompute PSOR constants to save floating-point operations
+        omega_compl = 1.0_wp - omega
+        omega_denom = omega / denom
 
         iter_count = 0
-        error = 1.0_wp 
+        error = 1.0_wp ! Initialize > 0.01 to enter the loop
 
         do while (error > 0.01_wp)
             iter_count = iter_count + 1
-            T_old = T
+            error = 0.0_wp ! Reset L1 error sum for the current iteration
 
-            ! The PSOR Sweep
+            ! The Fused PSOR Sweep
             do j = 2, jmax - 1
                 do i = 2, imax - 1
-                    ! Standard Gauss-Seidel guess
-                    T_GS = ( T(i+1,j) + T(i-1,j) + beta2 * (T(i,j+1) + T(i,j-1)) ) / denom
+                    ! 1. Cache the old value locally (Replaces the massive T_old array)
+                    temp_T_old = T(i,j)
                     
-                    ! Relaxation factor
-                    T(i,j) = (1.0_wp - omega) * T_old(i,j) + omega * T_GS
+                    ! 2. Standard Gauss-Seidel sum (Division is handled by omega_denom)
+                    T_GS = T(i+1,j) + T(i-1,j) + beta2 * (T(i,j+1) + T(i,j-1))
+                    
+                    ! 3. Apply Relaxation factor
+                    T(i,j) = omega_compl * temp_T_old + omega_denom * T_GS
+                    
+                    ! 4. Fused L1 Error calculation (Sum of Absolute Differences)
+                    error = error + abs(T(i,j) - temp_T_old)
                 end do
             end do
 
-            ! Check Convergence
-            error = get_error(T, T_old, imax, jmax)
-
+            ! Failsafe exit
             if (iter_count > 50000) then
-                print *, "WARNING: PSOR did not converge with omega = ", omega
+                print *, "WARNING: PSOR did not converge with omega = ", omega, " Final error = ", error
                 exit
             end if
         end do
@@ -179,77 +136,8 @@ contains
         comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
 
     end subroutine solve_PSOR
-
-
-    ! IMPLICIT SOLVERS (Line-by-Line)
-
-    ! (b) Line Gauss-Seidel Method (LGS)
-    subroutine solve_LGS(T, imax, jmax, dx, dy, iter_count, comp_time)
-        real(wp), intent(inout) :: T(:,:)
-        integer, intent(in)     :: imax, jmax
-        real(wp), intent(in)    :: dx, dy
-        integer, intent(out)    :: iter_count
-        real(wp), intent(out)   :: comp_time
-
-        real(wp) :: T_old(imax, jmax)
-        real(wp) :: error, beta2
-        integer  :: i, j, n
-        integer  :: tick_start, tick_end, tick_rate
-
-        ! Arrays for the TDMA
-        real(wp) :: a(imax-2), b(imax-2), c(imax-2), d(imax-2), x(imax-2)
-
-        call system_clock(tick_start, tick_rate)
-
-        beta2 = (dx / dy)**2
-        n = imax - 2
-        
-        a = 1.0_wp
-        b = -2.0_wp * (1.0_wp + beta2)
-        c = 1.0_wp
-
-        iter_count = 0
-        error = 1.0_wp
-
-        do while (error > 0.01_wp)
-            iter_count = iter_count + 1
-            T_old = T
-
-            ! Sweep through the grid horizontally (line by line)
-            do j = 2, jmax - 1
-                
-                ! Build the RHS (d) using the lines above and below
-                do i = 2, imax - 1
-                    d(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
-                end do
-
-                ! Apply Boundary Conditions
-                d(1) = d(1) - T(1, j)       ! Left wall
-                d(n) = d(n) - T(imax, j)    ! Right wall
-
-                ! TDMA
-                call tdma(a, b, c, d, x, n)
-
-                do i = 2, imax - 1
-                    T(i, j) = x(i-1)
-                end do
-            end do
-
-            ! Check Convergence
-            error = get_error(T, T_old, imax, jmax)
-
-            if (iter_count > 50000) then
-                print *, "WARNING: LGS did not converge!"
-                exit
-            end if
-        end do
-
-        call system_clock(tick_end)
-        comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
-
-    end subroutine solve_LGS
-
-    ! (d) Line Successive Over-Relaxation (LSOR)
+    
+    ! Line Successive Over-Relaxation (LSOR)
     subroutine solve_LSOR(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
         real(wp), intent(inout) :: T(:,:)
         integer, intent(in)     :: imax, jmax
@@ -309,11 +197,11 @@ contains
 
     end subroutine solve_LSOR
 
-    ! (e) Alternating Direction Implicit (ADI) Method
-    subroutine solve_ADI(T, imax, jmax, dx, dy, iter_count, comp_time)
+    ! Alternating Direction Implicit with Relaxation (ADIR)
+    subroutine solve_ADIR(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
         real(wp), intent(inout) :: T(:,:)
         integer, intent(in)     :: imax, jmax
-        real(wp), intent(in)    :: dx, dy
+        real(wp), intent(in)    :: dx, dy, omega
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
 
@@ -340,16 +228,21 @@ contains
 
         iter_count = 0
         error = 1.0_wp
+        
+        ! Initialize intermediate array so boundaries are correctly populated
         T_half = T
 
         do while (error > 0.01_wp)
             iter_count = iter_count + 1
             T_old = T
 
+            ! ==========================================
             ! HALF-STEP 1: Implicit X-Sweep
+            ! ==========================================
             do j = 2, jmax - 1
                 do i = 2, imax - 1
-                    rhs_x(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
+                    ! Explicit side uses the known T_old state
+                    rhs_x(i-1) = -beta2 * (T_half(i, j-1) + T_old(i, j+1))
                 end do
 
                 ! Left and Right boundary conditions
@@ -358,15 +251,19 @@ contains
 
                 call tdma(ax, bx, cx, rhs_x, x_val, nx)
 
+                ! RELAXATION (New intermediate state)
                 do i = 2, imax - 1
-                    T_half(i, j) = x_val(i-1)
+                    T_half(i, j) = omega * x_val(i-1) + (1.0_wp - omega) * T_old(i, j)
                 end do
             end do
 
+            ! ==========================================
             ! HALF-STEP 2: Implicit Y-Sweep
+            ! ==========================================
             do i = 2, imax - 1
                 do j = 2, jmax - 1
-                    rhs_y(j-1) = -alpha2 * (T_half(i-1, j) + T_half(i+1, j))
+                    ! Explicit side uses the freshly relaxed T_half state
+                    rhs_y(j-1) = -alpha2 * (T(i-1, j) + T_half(i+1, j))
                 end do
 
                 ! Bottom and Top boundary conditions
@@ -375,8 +272,9 @@ contains
 
                 call tdma(ay, by, cy, rhs_y, y_val, ny)
 
+                ! RELAXATION (Final new state)
                 do j = 2, jmax - 1
-                    T(i, j) = y_val(j-1)
+                    T(i, j) = omega * y_val(j-1) + (1.0_wp - omega) * T_half(i, j)
                 end do
             end do
 
@@ -384,7 +282,7 @@ contains
             error = get_error(T, T_old, imax, jmax)
 
             if (iter_count > 50000) then
-                print *, "WARNING: ADI did not converge!"
+                print *, "WARNING: ADIR did not converge with omega = ", omega
                 exit
             end if
         end do
@@ -392,9 +290,9 @@ contains
         call system_clock(tick_end)
         comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
 
-    end subroutine solve_ADI
+    end subroutine solve_ADIR
 
-    ! (f) LSOR for Quarter Domain (Symmetry Boundaries)
+    ! (g) LSOR for Quarter Domain (Symmetry Boundaries)
     subroutine solve_LSOR_sym(T, imax, jmax, dx, dy, omega, iter_count, comp_time)
         real(wp), intent(inout) :: T(:,:)
         integer, intent(in)     :: imax, jmax

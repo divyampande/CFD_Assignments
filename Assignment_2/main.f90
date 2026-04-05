@@ -26,8 +26,10 @@ program main
     ! Tracking & Timing variables
     integer :: iters, csv_id, w_int
     real(wp) :: c_time, omega
-    integer :: min_iters_psor, min_iters_lsor
-    real(wp) :: best_omega_psor, best_omega_lsor
+    integer :: min_iters_psor, min_iters_lsor, min_iters_adir
+    real(wp) :: best_omega_psor, best_omega_lsor, best_omega_adir
+
+    ! Constants
     integer, parameter :: N_REPEAT = 200
 
     ! Logical Variables
@@ -103,9 +105,11 @@ program main
     if (.NOT. (optimize_omega)) then
         read(file_unit, *) best_omega_psor
         read(file_unit, *) best_omega_lsor
+        read(file_unit, *) best_omega_adir
     else
         read(file_unit, *) ! Skip PSOR Omega
         read(file_unit, *) ! Skip LSOR Omega
+        read(file_unit, *) ! Skip ADIR Omega
     end if
 
     close(file_unit)
@@ -181,6 +185,28 @@ program main
             end if
         end do
         print *, ">> OPTIMAL LSOR: Omega = ", best_omega_lsor, min_iters_lsor, " iters"
+
+        ! Optimize LSOR
+        min_iters_adir = 999999
+        best_omega_adir = 1.0_wp
+
+        ! Since I already ran between 1 to 1.9 with a step of 0.001,
+        ! I already know the optimal omega is around 1.832, so I will just sweep,
+        ! between 1.8 and 1.85 to save time. If I had to do the entire range, I would just change the limits of this loop.
+        do w_int = 1800, 1850
+            omega = real(w_int, wp) / 1000.0_wp
+            call reset_grid(T, imax, jmax, BC)
+            call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, c_time)
+
+            write(*, '(A10, I20, F20.6, F15.3)') "LSOR", iters, c_time, omega
+
+            if (iters < min_iters_adir) then
+                min_iters_adir = iters
+                best_omega_adir = omega
+            end if
+        end do
+        print *, ">> OPTIMAL ADIR: Omega = ", best_omega_adir, min_iters_adir, " iters"
+        
     end if
 
     ! DATA EXPORT
@@ -222,6 +248,7 @@ program main
             call benchmark_solver("ADI", trim(base_name))
             call benchmark_solver("PSOR", trim(base_name), best_omega_psor)
             call benchmark_solver("LSOR", trim(base_name), best_omega_lsor)
+            call benchmark_solver("ADIR", trim(base_name), best_omega_adir)
         end if
     end if    
 
@@ -296,20 +323,23 @@ contains
             select case (solver_name)
                 case ("PGS")
                     call reset_grid(T, imax, jmax, BC)
-                    call solve_PGS(T, imax, jmax, dx, dy, iters, dummy_c_time)
+                    call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
                 case ("LGS")
                     call reset_grid(T, imax, jmax, BC)
-                    call solve_LGS(T, imax, jmax, dx, dy, iters, dummy_c_time)
+                    call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
                 case ("ADI")
                     call reset_grid(T, imax, jmax, BC)
-                    call solve_ADI(T, imax, jmax, dx, dy, iters, dummy_c_time)
+                    call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
                 case ("PSOR")
                     call reset_grid(T, imax, jmax, BC)
                     call solve_PSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
                 case ("LSOR")
                     call reset_grid(T, imax, jmax, BC)
                     call solve_LSOR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
-                
+                case ("ADIR")
+                    call reset_grid(T, imax, jmax, BC)
+                    call solve_ADIR(T, imax, jmax, dx, dy, omega, iters, dummy_c_time)
+
                 ! Quarter Domain Case
                 case ("LSOR_P2b")
                     T_q = 0.0_wp
