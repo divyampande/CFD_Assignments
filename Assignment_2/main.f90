@@ -140,7 +140,7 @@ program main
 
     ! RELAXATION FACTOR OPTIMIZERS (Sweeping omega 1.0 to 1.9)
     
-    if (optimize_omega) then
+    if (optimize_omega .and. .not. quarter_domain) then
          print *, "Optimizing relaxation factors for PSOR and LSOR..."
         ! Optimize PSOR
         min_iters_psor = 999999
@@ -207,6 +207,29 @@ program main
         end do
         print *, ">> OPTIMAL ADIR: Omega = ", best_omega_adir, min_iters_adir, " iters"
         
+    end if
+
+    if (quarter_domain .and. optimize_omega) then
+        print *, "Optimizing relaxation factor for LSOR with Quarter Domain Symmetry..."
+        min_iters_lsor = 999999
+        best_omega_lsor = 1.0_wp
+
+        do w_int = 1250, 1300
+            omega = real(w_int, wp) / 1000.0_wp
+            T_q = 0.0_wp
+            T_q(:, 1) = BC(1)     
+            T_q(1, :) = BC(3)     
+            T_q(1, 1) = (BC(1) + BC(3)) / 2.0_wp  
+            call solve_LSOR_sym(T_q, imax_q, jmax_q, dx, dy, omega, iters, c_time)
+
+            write(*, '(A10, I20, F20.6, F15.3)') "LSOR_Q", iters, c_time, omega
+
+            if (iters < min_iters_lsor) then
+                min_iters_lsor = iters
+                best_omega_lsor = omega
+            end if
+        end do
+        print *, ">> OPTIMAL LSOR with Quarter Symmetry: Omega = ", best_omega_lsor, min_iters_lsor, " iters"
     end if
 
     ! DATA EXPORT

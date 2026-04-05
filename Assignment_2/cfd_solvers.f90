@@ -335,8 +335,9 @@ contains
         integer, intent(out)    :: iter_count
         real(wp), intent(out)   :: comp_time
 
-        real(wp) :: error, beta2, omega_compl, temp_T_old
+        real(wp) :: error, beta2, temp_T_old
         real(wp) :: a_val, b_val, c_val, denom_temp
+        real(wp) :: b_base, relax_val
         integer  :: i, j, nx
         integer  :: tick_start, tick_end, tick_rate
 
@@ -348,13 +349,18 @@ contains
 
         beta2 = (dx / dy)**2
         nx = imax - 1 
-        omega_compl = 1.0_wp - omega
 
-        ! Standard Scalar TDMA Coefficients
         a_val = 1.0_wp
-        b_val = -2.0_wp * (1.0_wp + beta2)
         c_val = 1.0_wp
+        b_base = -2.0_wp * (1.0_wp + beta2)
 
+        ! Divide the main diagonal by omega
+        b_val = b_base / omega
+
+        ! Precalculate the RHS relaxation
+        relax_val = b_base * (1.0_wp - omega) / omega
+
+        ! PRECOMPUTE TDMA (Handling the Symmetry Wall!)
         inv_denom(1) = 1.0_wp / b_val
         cp(1) = c_val * inv_denom(1)
         
@@ -366,7 +372,7 @@ contains
         end do
         
         ! Right Symmetry Wall Ghost Node (Index nx)
-        ! Here, a = 2.0 and c = 0.0
+        ! Here, a = 2.0 and c = 0.0. The diagonal is still b_val.
         denom_temp = b_val - 2.0_wp * cp(nx-1)
         inv_denom(nx) = 1.0_wp / denom_temp
         cp(nx) = 0.0_wp
@@ -381,11 +387,13 @@ contains
             ! STANDARD GRID LINES (j = 2 to jmax - 1)
             do j = 2, jmax - 1
                 do i = 2, imax
-                    d(i-1) = -beta2 * (T(i, j-1) + T(i, j+1))
+                    d(i-1) = -beta2 * (T(i, j-1) + T(i, j+1)) + relax_val * T(i, j)
                 end do
                 
-                ! Left Dirichlet Boundary
+                ! Left Dirichlet Boundary (Fixed at 0 C)
                 d(1) = d(1) - T(1, j) 
+
+                ! INLINED FAST TDMA
                 dp(1) = d(1) * inv_denom(1)
                 do i = 2, nx - 1
                     dp(i) = (d(i) - a_val * dp(i-1)) * inv_denom(i)
@@ -397,10 +405,10 @@ contains
                     x_val(i) = dp(i) - cp(i) * x_val(i+1)
                 end do
 
-                ! Relaxation and Error
+                ! Error
                 do i = 2, imax
                     temp_T_old = T(i, j)
-                    T(i, j) = omega * x_val(i-1) + omega_compl * temp_T_old
+                    T(i, j) = x_val(i-1)
                     error = error + abs(T(i, j) - temp_T_old)
                 end do
             end do
@@ -410,9 +418,11 @@ contains
             
             ! Build RHS using Top Wall Ghost Node logic (2.0 * T(i, j-1))
             do i = 2, imax
-                d(i-1) = -beta2 * (2.0_wp * T(i, j-1))
+                d(i-1) = -beta2 * (2.0_wp * T(i, j-1)) + relax_val * T(i, j)
             end do
             d(1) = d(1) - T(1, j) 
+
+            ! INLINED FAST TDMA
             dp(1) = d(1) * inv_denom(1)
             do i = 2, nx - 1
                 dp(i) = (d(i) - a_val * dp(i-1)) * inv_denom(i)
@@ -424,10 +434,10 @@ contains
                 x_val(i) = dp(i) - cp(i) * x_val(i+1)
             end do
 
-            ! Relaxation and Error
+            ! Error
             do i = 2, imax
                 temp_T_old = T(i, j)
-                T(i, j) = omega * x_val(i-1) + omega_compl * temp_T_old
+                T(i, j) = x_val(i-1)
                 error = error + abs(T(i, j) - temp_T_old)
             end do
 
@@ -447,5 +457,5 @@ contains
         comp_time = real(tick_end - tick_start, wp) / real(tick_rate, wp)
 
     end subroutine solve_LSOR_sym
-    
+
 end module cfd_solvers
