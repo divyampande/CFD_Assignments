@@ -8,6 +8,7 @@ This module implements a suite of numerical solvers for the 2D Laplace equation.
 3.  **Point Successive Over-Relaxation (PSOR):** PGS accelerated by an optimized relaxation factor ($\omega$).
 4.  **Line Successive Over-Relaxation (LSOR):** LGS accelerated by an optimized relaxation factor ($\omega$).
 5.  **Alternating Direction Implicit (ADI):** Two-step implicit sweeps (X then Y direction) per iteration.
+6.  **Alternating Direction Implicit with Over-Relaxation (ADIR):** ADI accelerated by an optimized relaxation factor ($\omega$).
 
 ## Physical Domain & Cases
 * **Problem 1:** $0.3\text{m} \times 0.4\text{m}$ plate ($31 \times 41$ grid) with Dirichlet boundary conditions (Bottom=40°C, Top=10°C, Left=0°C, Right=0°C).
@@ -93,7 +94,8 @@ A sample input file (`sample_input.in`) is included in this repository. The solv
 
 ! Omega, these will be used if the omega optimization is set to FALSE
 1.835       ! PSOR Omega 
-1.777       ! LSOR Omega
+1.282       ! LSOR Omega
+1.301       ! ADIR Omega
 ```
 
 ## Build and Execute
